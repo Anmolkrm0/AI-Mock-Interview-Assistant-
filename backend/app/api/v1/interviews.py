@@ -151,6 +151,8 @@ async def create_interview(
         "completed_at": interview.completed_at,
         "created_at": interview.created_at,
         "plan": plan_data,
+        "overall_score": None,
+        "has_recording": False,
     }
 
 
@@ -182,6 +184,8 @@ def list_interviews(
             "completed_at": it.completed_at,
             "created_at": it.created_at,
             "plan": it.plan.plan_json if it.plan else None,
+            "overall_score": it.report.overall_score if it.report else None,
+            "has_recording": len(it.recordings) > 0,
         })
 
     return {"interviews": result, "total": total}
@@ -209,6 +213,8 @@ def get_interview(
         "completed_at": it.completed_at,
         "created_at": it.created_at,
         "plan": it.plan.plan_json if it.plan else None,
+        "overall_score": it.report.overall_score if it.report else None,
+        "has_recording": len(it.recordings) > 0,
     }
 
 

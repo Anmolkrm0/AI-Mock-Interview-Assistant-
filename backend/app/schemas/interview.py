@@ -28,6 +28,9 @@ class InterviewResponse(BaseModel):
     created_at: datetime
     plan: Optional[InterviewPlanResponse] = None
 
+    overall_score: Optional[int] = None
+    has_recording: bool = False
+
     class Config:
         from_attributes = True
 

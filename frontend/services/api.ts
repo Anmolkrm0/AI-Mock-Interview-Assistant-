@@ -118,3 +118,117 @@ export async function getInterviewApi(interviewId: string) {
   }
   return res.json();
 }
+
+export async function getInterviewStatusApi(interviewId: string) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/interviews/${interviewId}/status`, {
+    method: "GET",
+    headers,
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || "Failed to fetch interview status.");
+  }
+  return res.json();
+}
+
+export async function triggerEvaluationApi(interviewId: string) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/interviews/${interviewId}/evaluate`, {
+    method: "POST",
+    headers,
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || "Failed to evaluate interview.");
+  }
+  return res.json();
+}
+
+export async function getInterviewReportApi(interviewId: string) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/interviews/${interviewId}/report`, {
+    method: "GET",
+    headers,
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || "Failed to fetch interview report.");
+  }
+  return res.json();
+}
+
+export async function submitFeedbackApi(interviewId: string, rating: number, comments?: string) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/interviews/${interviewId}/feedback`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ rating, comments: comments || null }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || "Failed to submit feedback.");
+  }
+  return res.json();
+}
+
+export async function listInterviewsApi(skip: number = 0, limit: number = 20) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/interviews?skip=${skip}&limit=${limit}`, {
+    method: "GET",
+    headers,
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || "Failed to list interviews.");
+  }
+  return res.json();
+}
+
+export async function getRecordingUrlApi(interviewId: string) {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/interviews/${interviewId}/recording-url`, {
+    method: "GET",
+    headers,
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || "Recording unavailable or archived.");
+  }
+  return res.json();
+}
+
+export async function getLatestRecordingApi() {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/recordings/latest`, {
+    method: "GET",
+    headers,
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || "Failed to fetch latest recording.");
+  }
+  return res.json();
+}
+
+export async function deleteLatestRecordingApi() {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}/recordings/latest`, {
+    method: "DELETE",
+    headers,
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || "Failed to delete latest recording.");
+  }
+  return res.json();
+}
+
