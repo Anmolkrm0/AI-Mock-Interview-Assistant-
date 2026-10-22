@@ -6,27 +6,24 @@ from google.genai import types
 
 from backend.app.core.config import settings
 from backend.app.schemas.role import RoleDetectionResponse, DetectedRole
+from backend.app.services.document_service import extract_seniority_from_text
 
 
 async def detect_roles_from_job_description(jd_text: str, filename: str = "") -> Dict[str, Any]:
     """
     Detects plausible candidate roles with seniority levels and confidence scores.
-    Leverages explicit regex patterns, JD text content, uploaded filename, and Gemini AI.
+    Leverages explicit regex patterns, header heuristics, JD text content, uploaded filename, and Gemini AI.
     """
     combined_context = f"{filename} {jd_text}".strip()
     text_lower = combined_context.lower()
 
     # 1. Seniority detection
-    seniority = "Senior"
-    if any(w in text_lower for w in ["lead", "principal", "staff", "director", "head of", "vp", "chief"]):
-        seniority = "Staff"
-    elif any(w in text_lower for w in ["junior", "associate", "entry", "intern"]):
-        seniority = "Junior"
+    seniority = extract_seniority_from_text(jd_text, filename=filename)
 
     # 2. Check for explicit job title labels in text or filename
     explicit_title: Optional[str] = None
     title_match = re.search(
-        r"(?:job\s*title|job\s*role|position|role|title)\s*[:\-–]\s*([A-Za-z0-9\s\/\-_()&+]+)",
+        r"(?:job\s*title|job\s*role|position(?:\s*title)?|role(?:\s*title)?|title|about\s+the\s+role|role\s+overview|position\s+summary|job\s+summary|target\s+role|target\s+position)\s*[:\-–]\s*([A-Za-z0-9\s\/\-_()&+]+)",
         jd_text,
         re.IGNORECASE,
     )
@@ -34,12 +31,31 @@ async def detect_roles_from_job_description(jd_text: str, filename: str = "") ->
         candidate_t = title_match.group(1).strip().split("\n")[0].strip()
         candidate_t = re.sub(r"[,;].*$", "", candidate_t).strip()
         candidate_t = re.sub(r"^(?:an?|the)\s+", "", candidate_t, flags=re.IGNORECASE).strip()
-        if 3 <= len(candidate_t) <= 60 and not any(w in candidate_t.lower() for w in ["description", "overview", "summary", "about us", "location", "salary", "responsibilities", "qualifications"]):
-            candidate_t = re.sub(r"\bTPM\b", "Technical Product Manager", candidate_t, flags=re.IGNORECASE)
+        if 3 <= len(candidate_t) <= 65 and not any(w in candidate_t.lower() for w in ["description", "overview", "summary", "about us", "location", "salary", "responsibilities", "qualifications"]):
+            candidate_t = re.sub(r"\bTPM\b", "Technical Program Manager", candidate_t, flags=re.IGNORECASE)
             candidate_t = re.sub(r"\bPM\b", "Product Manager", candidate_t, flags=re.IGNORECASE)
             candidate_t = re.sub(r"\bSRE\b", "Site Reliability Engineer", candidate_t, flags=re.IGNORECASE)
+            candidate_t = re.sub(r"\bEM\b", "Engineering Manager", candidate_t, flags=re.IGNORECASE)
+            candidate_t = re.sub(r"\bSDET\b", "QA Automation Engineer (SDET)", candidate_t, flags=re.IGNORECASE)
             explicit_title = candidate_t.strip()
 
+    # 3. Document header lines heuristic (often lines 1-4 contain the title directly)
+    if not explicit_title:
+        lines = [l.strip() for l in jd_text.splitlines() if l.strip()]
+        for line in lines[:4]:
+            clean_l = re.sub(r"^(?:an?|the)\s+", "", line, flags=re.IGNORECASE).strip()
+            clean_l = re.sub(r"\s*[\(\[].*?[\)\]]", "", clean_l).strip()  # remove (Remote), [Full-Time]
+            if 3 <= len(clean_l) <= 65 and any(rw in clean_l.lower() for rw in [
+                "engineer", "developer", "architect", "manager", "program manager", "product manager",
+                "lead", "specialist", "scientist", "analyst", "director", "sre", "devops", "tpm", "sdet", "consultant"
+            ]) and not any(bad in clean_l.lower() for bad in ["http", "@", "about us", "who we are", "equal opportunity", "benefits", "requirements", "responsibilities"]):
+                clean_l = re.sub(r"\bTPM\b", "Technical Program Manager", clean_l, flags=re.IGNORECASE)
+                clean_l = re.sub(r"\bPM\b", "Product Manager", clean_l, flags=re.IGNORECASE)
+                clean_l = re.sub(r"\bSRE\b", "Site Reliability Engineer", clean_l, flags=re.IGNORECASE)
+                explicit_title = clean_l.strip()
+                break
+
+    # 4. Hiring sentence match
     if not explicit_title:
         hiring_match = re.search(
             r"(?:we(?:'re|\s+are)\s+(?:hiring|looking\s+for|seeking)|seeking\s+an?|hiring\s+an?)\s+([A-Za-z0-9\s\/\-_()&+]+?)(?:\s+to|\s+who|\s+for|\.|\n|,|;)",
@@ -49,24 +65,35 @@ async def detect_roles_from_job_description(jd_text: str, filename: str = "") ->
         if hiring_match:
             candidate_t = hiring_match.group(1).strip()
             candidate_t = re.sub(r"^(?:an?|the)\s+", "", candidate_t, flags=re.IGNORECASE).strip()
-            if 3 <= len(candidate_t) <= 60 and any(w in candidate_t.lower() for w in ["engineer", "developer", "manager", "architect", "lead", "specialist", "scientist", "analyst", "director", "pm", "tpm", "sre", "devops"]):
-                candidate_t = re.sub(r"\bTPM\b", "Technical Product Manager", candidate_t, flags=re.IGNORECASE)
+            if 3 <= len(candidate_t) <= 65 and any(w in candidate_t.lower() for w in ["engineer", "developer", "manager", "architect", "lead", "specialist", "scientist", "analyst", "director", "pm", "tpm", "sre", "devops"]):
+                candidate_t = re.sub(r"\bTPM\b", "Technical Program Manager", candidate_t, flags=re.IGNORECASE)
                 candidate_t = re.sub(r"\bPM\b", "Product Manager", candidate_t, flags=re.IGNORECASE)
                 candidate_t = re.sub(r"\bSRE\b", "Site Reliability Engineer", candidate_t, flags=re.IGNORECASE)
                 explicit_title = candidate_t.strip()
 
+    # 5. Clean filename fallback
     if not explicit_title and filename:
         clean_fname = re.sub(r"\.(pdf|docx|txt)$", "", filename, flags=re.IGNORECASE)
         clean_fname = re.sub(r"[_\-]+", " ", clean_fname)
         clean_fname = re.sub(r"(?i)\b(jd|job\s*description|resume|cv|posting|specification)\b", "", clean_fname).strip()
         clean_fname = re.sub(r"^(?:an?|the)\s+", "", clean_fname, flags=re.IGNORECASE).strip()
-        if 3 <= len(clean_fname) <= 60 and any(w in clean_fname.lower() for w in ["engineer", "developer", "manager", "architect", "lead", "specialist", "scientist", "analyst", "director", "pm", "tpm", "sre", "devops"]):
-            clean_fname = re.sub(r"\bTPM\b", "Technical Product Manager", clean_fname, flags=re.IGNORECASE)
+        if 3 <= len(clean_fname) <= 65 and any(w in clean_fname.lower() for w in ["engineer", "developer", "manager", "architect", "lead", "specialist", "scientist", "analyst", "director", "pm", "tpm", "sre", "devops"]):
+            clean_fname = re.sub(r"\bTPM\b", "Technical Program Manager", clean_fname, flags=re.IGNORECASE)
             clean_fname = re.sub(r"\bPM\b", "Product Manager", clean_fname, flags=re.IGNORECASE)
             clean_fname = re.sub(r"\bSRE\b", "Site Reliability Engineer", clean_fname, flags=re.IGNORECASE)
             explicit_title = clean_fname.strip()
 
-    # 3. Gemini-based role detection if API key configured
+    # If title starts with seniority prefix, extract seniority
+    base_role = explicit_title or ""
+    if explicit_title:
+        for sen_kw in ["Director", "Principal", "Staff", "Lead", "Senior", "Mid-Level", "Junior", "Intern"]:
+            pattern = rf"^(?:{sen_kw}|Sr\.?|Jr\.?)\s+"
+            if re.search(pattern, base_role, flags=re.IGNORECASE):
+                base_role = re.sub(pattern, "", base_role, flags=re.IGNORECASE).strip()
+                seniority = sen_kw
+                break
+
+    # 6. Gemini-based role detection if API key configured
     if settings.GEMINI_API_KEY:
         try:
             client = genai.Client(api_key=settings.GEMINI_API_KEY)
@@ -97,11 +124,13 @@ Job Description:
                             "reasoning": f"Explicit job title extracted from document specification: '{explicit_title}'",
                         })
                         parsed["primary_role"] = explicit_title
+                    if not parsed.get("primary_seniority"):
+                        parsed["primary_seniority"] = seniority
                     return parsed
         except Exception as err:
             print(f"Gemini role detection failed: {err}")
 
-    # 4. Fallback heuristic role detection
+    # 7. Fallback heuristic role detection
     roles: List[Dict[str, Any]] = []
 
     # If explicit title found, prioritize it at the top
@@ -116,7 +145,44 @@ Job Description:
     # Domain keyword matching
     search_context = f"{explicit_title or ''} {text_lower}".lower()
 
-    if any(k in search_context for k in ["ai technical pm", "technical pm", "ai tpm", "technical product manager", "product manager", "product owner", "product management", "tpm"]):
+    if any(k in search_context for k in ["program manager", "tpm", "technical program manager"]):
+        if any(ai_k in search_context for ai_k in ["ai", "machine learning", "ml", "llm"]):
+            roles.extend([
+                {
+                    "title": f"{seniority} AI Technical Program Manager",
+                    "seniority": seniority,
+                    "confidence": 0.96,
+                    "reasoning": "Job specification emphasizes AI engineering roadmapping, cross-functional dependencies, and model deployment.",
+                },
+                {
+                    "title": f"{seniority} Technical Program Manager",
+                    "seniority": seniority,
+                    "confidence": 0.90,
+                    "reasoning": "Matches core technical program management, dependency mapping, and milestone delivery.",
+                },
+                {
+                    "title": "AI Platform Program Lead",
+                    "seniority": "Lead",
+                    "confidence": 0.85,
+                    "reasoning": "Large-scale platform delivery across AI infrastructure and distributed systems.",
+                },
+            ])
+        else:
+            roles.extend([
+                {
+                    "title": f"{seniority} Technical Program Manager",
+                    "seniority": seniority,
+                    "confidence": 0.95,
+                    "reasoning": "Technical program leadership, milestone tracking, and cross-functional engineering alignment.",
+                },
+                {
+                    "title": "Engineering Program Manager",
+                    "seniority": seniority,
+                    "confidence": 0.88,
+                    "reasoning": "Sprint orchestration and multi-team dependency management.",
+                },
+            ])
+    elif any(k in search_context for k in ["ai technical pm", "technical pm", "ai tpm", "technical product manager", "product manager", "product owner", "product management"]):
         if any(ai_k in search_context for ai_k in ["ai", "machine learning", "ml", "llm", "generative"]):
             detected_title = explicit_title or f"{seniority} AI Technical Product Manager"
             roles.extend([
@@ -410,5 +476,6 @@ Job Description:
     return {
         "detected_roles": deduped_roles,
         "primary_role": primary_role,
+        "primary_seniority": seniority,
     }
 

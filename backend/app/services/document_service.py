@@ -325,6 +325,48 @@ def extract_skills_from_resume_text(raw_text: str) -> List[str]:
     return extracted
 
 
+def extract_seniority_from_text(text: str, filename: str = "") -> str:
+    """
+    Extracts seniority level:
+    'Director' | 'Principal' | 'Staff' | 'Lead' | 'Senior' | 'Mid-Level' | 'Junior' | 'Intern'
+    """
+    import re
+    combined = f"{filename} {text}".lower()
+
+    # 1. Direct explicit keywords
+    if any(k in combined for k in ["intern", "internship", "co-op"]):
+        return "Intern"
+    if any(k in combined for k in ["director", "head of", "vp", "vice president", "chief", "executive"]):
+        return "Director"
+    if any(k in combined for k in ["principal", "distinguished", "fellow", "l7", "ic7"]):
+        return "Principal"
+    if any(k in combined for k in ["staff", "l6", "ic6"]):
+        return "Staff"
+    if any(k in combined for k in ["lead", "tech lead", "team lead"]):
+        return "Lead"
+    if any(k in combined for k in ["senior", "sr.", "sr ", "sr-", "l5", "ic5"]):
+        return "Senior"
+    if any(k in combined for k in ["mid-level", "mid level", "intermediate", "l4", "ic4", "level 2", "level ii", "level 3"]):
+        return "Mid-Level"
+    if any(k in combined for k in ["junior", "jr.", "jr ", "associate", "entry-level", "entry level", "new grad", "graduate", "l3", "ic3"]):
+        return "Junior"
+
+    # 2. Years of Experience (YOE) fallback
+    yoe_match = re.search(r"(\d+)\+?\s*(?:years|yrs|yoe)", text, re.IGNORECASE)
+    if yoe_match:
+        years = int(yoe_match.group(1))
+        if years >= 10:
+            return "Staff"
+        elif years >= 5:
+            return "Senior"
+        elif years >= 2:
+            return "Mid-Level"
+        else:
+            return "Junior"
+
+    return "Senior"
+
+
 def extract_jd_details(raw_text: str, filename: str = "") -> Dict[str, Any]:
     """
     Deterministically extracts structured job description requirements, role title,
@@ -335,16 +377,12 @@ def extract_jd_details(raw_text: str, filename: str = "") -> Dict[str, Any]:
     text_lower = combined.lower()
 
     # 1. Seniority detection
-    seniority = "Senior"
-    if any(w in text_lower for w in ["lead", "principal", "staff", "director", "head of", "vp", "chief"]):
-        seniority = "Staff"
-    elif any(w in text_lower for w in ["junior", "associate", "entry", "intern"]):
-        seniority = "Junior"
+    seniority = extract_seniority_from_text(raw_text, filename=filename)
 
     # 2. Check for explicit job title labels in text or filename
-    explicit_title = None
+    explicit_title: Optional[str] = None
     title_match = re.search(
-        r"(?:job\s*title|job\s*role|position|role|title)\s*[:\-–]\s*([A-Za-z0-9\s\/\-_()&+]+)",
+        r"(?:job\s*title|job\s*role|position(?:\s*title)?|role(?:\s*title)?|title|about\s+the\s+role|role\s+overview|position\s+summary|job\s+summary|target\s+role|target\s+position)\s*[:\-–]\s*([A-Za-z0-9\s\/\-_()&+]+)",
         raw_text,
         re.IGNORECASE,
     )
@@ -352,12 +390,31 @@ def extract_jd_details(raw_text: str, filename: str = "") -> Dict[str, Any]:
         candidate_t = title_match.group(1).strip().split("\n")[0].strip()
         candidate_t = re.sub(r"[,;].*$", "", candidate_t).strip()
         candidate_t = re.sub(r"^(?:an?|the)\s+", "", candidate_t, flags=re.IGNORECASE).strip()
-        if 3 <= len(candidate_t) <= 60 and not any(w in candidate_t.lower() for w in ["description", "overview", "summary", "about us", "location", "salary"]):
-            candidate_t = re.sub(r"\bTPM\b", "Technical Product Manager", candidate_t, flags=re.IGNORECASE)
+        if 3 <= len(candidate_t) <= 65 and not any(w in candidate_t.lower() for w in ["description", "overview", "summary", "about us", "location", "salary", "qualifications", "responsibilities"]):
+            candidate_t = re.sub(r"\bTPM\b", "Technical Program Manager", candidate_t, flags=re.IGNORECASE)
             candidate_t = re.sub(r"\bPM\b", "Product Manager", candidate_t, flags=re.IGNORECASE)
             candidate_t = re.sub(r"\bSRE\b", "Site Reliability Engineer", candidate_t, flags=re.IGNORECASE)
+            candidate_t = re.sub(r"\bEM\b", "Engineering Manager", candidate_t, flags=re.IGNORECASE)
+            candidate_t = re.sub(r"\bSDET\b", "QA Automation Engineer (SDET)", candidate_t, flags=re.IGNORECASE)
             explicit_title = candidate_t.strip()
 
+    # 3. Document header lines heuristic (often lines 1-4 contain the title directly)
+    if not explicit_title:
+        lines = [l.strip() for l in raw_text.splitlines() if l.strip()]
+        for line in lines[:4]:
+            clean_l = re.sub(r"^(?:an?|the)\s+", "", line, flags=re.IGNORECASE).strip()
+            clean_l = re.sub(r"\s*[\(\[].*?[\)\]]", "", clean_l).strip()  # remove (Remote), [Full-Time]
+            if 3 <= len(clean_l) <= 65 and any(rw in clean_l.lower() for rw in [
+                "engineer", "developer", "architect", "manager", "program manager", "product manager",
+                "lead", "specialist", "scientist", "analyst", "director", "sre", "devops", "tpm", "sdet", "consultant"
+            ]) and not any(bad in clean_l.lower() for bad in ["http", "@", "about us", "who we are", "equal opportunity", "benefits", "requirements", "responsibilities"]):
+                clean_l = re.sub(r"\bTPM\b", "Technical Program Manager", clean_l, flags=re.IGNORECASE)
+                clean_l = re.sub(r"\bPM\b", "Product Manager", clean_l, flags=re.IGNORECASE)
+                clean_l = re.sub(r"\bSRE\b", "Site Reliability Engineer", clean_l, flags=re.IGNORECASE)
+                explicit_title = clean_l.strip()
+                break
+
+    # 4. Hiring sentence match
     if not explicit_title:
         hiring_match = re.search(
             r"(?:we(?:'re|\s+are)\s+(?:hiring|looking\s+for|seeking)|seeking\s+an?|hiring\s+an?)\s+([A-Za-z0-9\s\/\-_()&+]+?)(?:\s+to|\s+who|\s+for|\.|\n|,|;)",
@@ -367,29 +424,77 @@ def extract_jd_details(raw_text: str, filename: str = "") -> Dict[str, Any]:
         if hiring_match:
             candidate_t = hiring_match.group(1).strip()
             candidate_t = re.sub(r"^(?:an?|the)\s+", "", candidate_t, flags=re.IGNORECASE).strip()
-            if 3 <= len(candidate_t) <= 60 and any(w in candidate_t.lower() for w in ["engineer", "developer", "manager", "architect", "lead", "specialist", "scientist", "analyst", "director", "pm", "tpm", "sre", "devops"]):
-                candidate_t = re.sub(r"\bTPM\b", "Technical Product Manager", candidate_t, flags=re.IGNORECASE)
+            if 3 <= len(candidate_t) <= 65 and any(w in candidate_t.lower() for w in ["engineer", "developer", "manager", "architect", "lead", "specialist", "scientist", "analyst", "director", "pm", "tpm", "sre", "devops"]):
+                candidate_t = re.sub(r"\bTPM\b", "Technical Program Manager", candidate_t, flags=re.IGNORECASE)
                 candidate_t = re.sub(r"\bPM\b", "Product Manager", candidate_t, flags=re.IGNORECASE)
                 candidate_t = re.sub(r"\bSRE\b", "Site Reliability Engineer", candidate_t, flags=re.IGNORECASE)
                 explicit_title = candidate_t.strip()
 
+    # 5. Filename fallback
     if not explicit_title and filename:
         clean_fname = re.sub(r"\.(pdf|docx|txt)$", "", filename, flags=re.IGNORECASE)
         clean_fname = re.sub(r"[_\-]+", " ", clean_fname)
         clean_fname = re.sub(r"(?i)\b(jd|job\s*description|resume|cv|posting|specification)\b", "", clean_fname).strip()
         clean_fname = re.sub(r"^(?:an?|the)\s+", "", clean_fname, flags=re.IGNORECASE).strip()
-        if 3 <= len(clean_fname) <= 60 and any(w in clean_fname.lower() for w in ["engineer", "developer", "manager", "architect", "lead", "specialist", "scientist", "analyst", "director", "pm", "tpm", "sre", "devops"]):
-            clean_fname = re.sub(r"\bTPM\b", "Technical Product Manager", clean_fname, flags=re.IGNORECASE)
+        if 3 <= len(clean_fname) <= 65 and any(w in clean_fname.lower() for w in ["engineer", "developer", "manager", "architect", "lead", "specialist", "scientist", "analyst", "director", "pm", "tpm", "sre", "devops"]):
+            clean_fname = re.sub(r"\bTPM\b", "Technical Program Manager", clean_fname, flags=re.IGNORECASE)
             clean_fname = re.sub(r"\bPM\b", "Product Manager", clean_fname, flags=re.IGNORECASE)
             clean_fname = re.sub(r"\bSRE\b", "Site Reliability Engineer", clean_fname, flags=re.IGNORECASE)
             explicit_title = clean_fname.strip()
 
-    # 3. Dynamic role categorization & competency profiling
+    # If title starts with seniority prefix, extract and clean it
+    base_role = explicit_title or ""
+    if explicit_title:
+        for sen_kw in ["Director", "Principal", "Staff", "Lead", "Senior", "Mid-Level", "Junior", "Intern"]:
+            pattern = rf"^(?:{sen_kw}|Sr\.?|Jr\.?)\s+"
+            if re.search(pattern, base_role, flags=re.IGNORECASE):
+                base_role = re.sub(pattern, "", base_role, flags=re.IGNORECASE).strip()
+                seniority = sen_kw
+                break
+
+    # 6. Dynamic role categorization & competency profiling
     domain_search = f"{explicit_title or ''} {text_lower}".lower()
 
-    if any(k in domain_search for k in ["ai technical pm", "technical pm", "ai tpm", "technical product manager", "product manager", "product owner", "product management", "tpm"]):
+    if any(k in domain_search for k in ["program manager", "tpm", "technical program manager"]):
+        if any(ai_k in domain_search for ai_k in ["ai", "machine learning", "ml", "llm"]):
+            job_title = explicit_title or f"{seniority} AI Technical Program Manager"
+            base_role = base_role or "AI Technical Program Manager"
+            competencies = [
+                "AI Technical Program Strategy & Architecture",
+                "Cross-Functional Dependency & Risk Management",
+                "Model Deployment, Latency & Scaling Telemetry",
+                "Technical Trade-offs & Milestone Execution",
+                "Incident Leadership & Executive Alignment",
+            ]
+            responsibilities = [
+                "Lead execution and delivery of complex AI/ML programs across engineering and research.",
+                "Manage technical dependencies, critical paths, and mitigation strategies for high-scale AI systems.",
+                "Define program telemetry, SLOs, model evaluation criteria, and launch milestones.",
+                "Partner with engineering leads and product architects to resolve architectural trade-offs.",
+                "Drive blameless incident reviews and institutional safeguards for production models.",
+            ]
+            required_skills = ["Technical Program Management", "System Architecture", "Cross-Functional Leadership", "Dependency Management", "AI / ML Platforms", "Risk Mitigation", "Agile / Scrum", "Telemetry & Metrics"]
+        else:
+            job_title = explicit_title or f"{seniority} Technical Program Manager"
+            base_role = base_role or "Technical Program Manager"
+            competencies = [
+                "Technical Program Architecture & Scoping",
+                "Cross-Team Dependency & Milestone Execution",
+                "System Reliability, Risk Management & SLOs",
+                "Engineering Alignment & Trade-off Resolution",
+                "Executive Communication & Governance",
+            ]
+            responsibilities = [
+                "Orchestrate delivery of large-scale, cross-functional technical initiatives across engineering teams.",
+                "Identify and resolve technical bottlenecks, critical path dependencies, and system integration risks.",
+                "Establish program telemetry, operational SLAs, and release governance standards.",
+                "Facilitate technical design reviews and align distributed teams on shared architectures.",
+            ]
+            required_skills = ["Technical Program Management", "System Architecture", "Cross-Functional Leadership", "Agile / Scrum", "Risk Management", "Dependency Mapping", "JIRA", "API Systems"]
+    elif any(k in domain_search for k in ["ai technical pm", "technical pm", "ai tpm", "technical product manager", "product manager", "product owner", "product management"]):
         if any(ai_k in domain_search for ai_k in ["ai", "machine learning", "ml", "llm", "generative"]):
             job_title = explicit_title or f"{seniority} AI Technical Product Manager"
+            base_role = base_role or "AI Technical Product Manager"
             competencies = [
                 "AI Product Vision & Strategy",
                 "Technical Architecture & LLM Systems",
@@ -407,6 +512,7 @@ def extract_jd_details(raw_text: str, filename: str = "") -> Dict[str, Any]:
             required_skills = ["Product Roadmapping", "PRDs", "AI / LLM Product Strategy", "Cross-Functional Leadership", "Agile / Scrum", "Technical Architecture", "System Design", "A/B Testing"]
         else:
             job_title = explicit_title or f"{seniority} Technical Product Manager"
+            base_role = base_role or "Technical Product Manager"
             competencies = [
                 "Technical Product Strategy",
                 "Architecture & Engineering Collaboration",
@@ -423,6 +529,7 @@ def extract_jd_details(raw_text: str, filename: str = "") -> Dict[str, Any]:
             required_skills = ["Technical Product Management", "Product Roadmapping", "PRDs", "Agile", "Scrum", "JIRA", "System Design"]
     elif any(k in domain_search for k in ["devops", "sre", "site reliability", "platform engineer", "infrastructure engineer"]):
         job_title = explicit_title or f"{seniority} DevOps / Site Reliability Engineer"
+        base_role = base_role or "DevOps / Site Reliability Engineer"
         competencies = [
             "Infrastructure as Code & Cloud Automation",
             "CI/CD Pipelines & Deployment Reliability",
@@ -438,7 +545,9 @@ def extract_jd_details(raw_text: str, filename: str = "") -> Dict[str, Any]:
         ]
         required_skills = ["Kubernetes", "Docker", "Terraform", "CI/CD", "AWS", "Linux", "Prometheus", "Grafana", "Python", "Bash"]
     elif any(k in text_lower for k in ["data engineer", "data platform", "etl engineer", "big data"]):
-        job_title = f"{seniority} Data Engineer"
+        job_title = explicit_title or f"{seniority} Data Engineer"
+        base_role = base_role or "Data Engineer"
+
         competencies = [
             "Data Pipeline Architecture & Stream Processing",
             "Data Warehousing & Dimensional Modeling",
@@ -600,6 +709,7 @@ def extract_jd_details(raw_text: str, filename: str = "") -> Dict[str, Any]:
 
     return {
         "job_title": job_title,
+        "base_role": base_role or job_title,
         "seniority": seniority,
         "required_skills": required_skills,
         "preferred_skills": preferred_skills,
@@ -719,9 +829,12 @@ Job Description Text:
             )
             if response.text:
                 parsed = json.loads(response.text.strip())
-                # Ensure job_title is not a generic placeholder if filename gave a specific role
-                if fallback_details["job_title"] != "Senior Full-Stack Software Engineer" and parsed.get("job_title") in ["Software Engineer", "Engineer", ""]:
+                # Ensure job_title is not a generic placeholder if fallback gave a specific role
+                if fallback_details["job_title"] != "Senior Full-Stack Software Engineer" and (not parsed.get("job_title") or parsed.get("job_title") in ["Software Engineer", "Engineer", ""]):
                     parsed["job_title"] = fallback_details["job_title"]
+                if not parsed.get("seniority") or parsed.get("seniority") in ["Mid-Senior", "Senior"]:
+                    parsed["seniority"] = fallback_details.get("seniority", "Senior")
+                parsed["base_role"] = fallback_details.get("base_role", parsed.get("job_title", ""))
                 return parsed
         except Exception as err:
             print(f"Gemini JD parsing failed: {err}")

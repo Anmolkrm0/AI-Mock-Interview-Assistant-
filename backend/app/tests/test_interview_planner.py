@@ -40,3 +40,29 @@ async def test_generate_interview_plan_stress_test_rigor():
     assert len(plan["questions"]) == 10
     difficulties = [q["difficulty"] for q in plan["questions"]]
     assert "Staff" in difficulties
+
+
+@pytest.mark.asyncio
+async def test_generate_interview_plan_dynamic_skills_and_competencies():
+    jd = {
+        "job_title": "Senior AI Technical Program Manager",
+        "seniority": "Senior",
+        "required_skills": ["LLMs", "RAG & Vector DBs", "Prompt Engineering", "Telemetry & SLOs"],
+        "responsibilities": [
+            "Drive delivery milestones for generative AI copilots and ensure 99.9% uptime",
+            "Coordinate cross-functional work across data science, safety, and infra teams",
+        ],
+        "competencies": ["Generative AI Governance", "Cross-functional Milestones"],
+    }
+    plan = await generate_interview_plan(
+        job_role="Senior AI Technical Program Manager",
+        duration_minutes=30,
+        evaluation_rigor="target_bar",
+        job_description=jd,
+    )
+    assert len(plan["questions"]) == 7
+    all_q_text = " ".join([q["question_text"] + " " + q["competency"] for q in plan["questions"]])
+    # The questions should dynamically reference the JD's specific skills & competencies
+    assert "LLMs" in all_q_text or "RAG" in all_q_text or "Generative AI" in all_q_text
+    assert "Senior AI Technical Program Manager" in plan["questions"][0]["question_text"]
+

@@ -80,7 +80,7 @@ Requirements:
         except Exception as err:
             print(f"Gemini plan generation failed: {err}")
 
-    # Deterministic tailored plan generation adapted to role, duration, and rigor
+    # Deterministic dynamic plan generation adapted to role, JD skills, responsibilities, and seniority
     rigor_label = evaluation_rigor.replace("_", " ").title()
     difficulty_map = {
         "standard": "Medium",
@@ -89,150 +89,257 @@ Requirements:
     }
     diff = difficulty_map.get(evaluation_rigor, "Hard")
 
-    all_questions_bank = [
-        {
-            "id": 1,
-            "question_text": f"Can you walk me through the architecture of a high-impact system you designed or scaled relevant to the {job_role} position?",
-            "competency": "System Architecture & Breadth",
-            "difficulty": "Medium",
-            "question_type": "architectural",
-            "expected_evidence": "Clearly states requirements, traffic volumes, component boundaries, and technology trade-offs.",
-            "suggested_follow_ups": [
-                "What was the single biggest bottleneck in that design?",
-                "How did you monitor data consistency under peak load?"
-            ],
-            "time_allocation_minutes": 5,
-        },
-        {
-            "id": 2,
-            "question_text": "Suppose a critical production service begins experiencing intermittent 504 timeouts and elevated tail-latency (p99). How do you systematically triage and isolate the root cause?",
-            "competency": "Production Incident Triage & Resilience",
-            "difficulty": diff,
-            "question_type": "technical",
-            "expected_evidence": "Methodical triage using distributed traces, metrics, connection pool starvation, and database slow-log inspection before remediation.",
-            "suggested_follow_ups": [
-                "How would you prevent cascading failures across downstream services?",
-                "When would you trip a circuit breaker vs shedding load?"
-            ],
-            "time_allocation_minutes": 5,
-        },
-        {
-            "id": 3,
-            "question_text": "How do you evaluate consistency vs availability trade-offs when designing a distributed event-driven data pipeline under network partitions?",
-            "competency": "Distributed Systems & Consistency",
-            "difficulty": diff,
-            "question_type": "trade_off",
-            "expected_evidence": "Grounds answer in CAP/PACELC theorem, compares linearizable consensus (Raft) with eventual consistency, and addresses idempotent message deduplication.",
-            "suggested_follow_ups": [
-                "How do you handle out-of-order event delivery?",
-                "What is your dead-letter queue replay strategy?"
-            ],
-            "time_allocation_minutes": 6,
-        },
-        {
-            "id": 4,
-            "question_text": "Tell me about a time you had a strong technical disagreement with a team member or stakeholder regarding system design. How did you resolve it?",
-            "competency": "Technical Leadership & Communication",
-            "difficulty": "Medium",
-            "question_type": "behavioral",
-            "expected_evidence": "Structured using STAR method; demonstrates data-driven benchmarking and constructive team alignment without ego.",
-            "suggested_follow_ups": [
-                "If the benchmark data was inconclusive, how would you have broken the tie?",
-                "What would you do differently in retrospect?"
-            ],
-            "time_allocation_minutes": 4,
-        },
-        {
-            "id": 5,
-            "question_text": "How would you design a database schema migration for a zero-downtime table containing 500 million rows that is actively taking writes?",
-            "competency": "Data Modeling & Zero-Downtime Operations",
-            "difficulty": diff,
-            "question_type": "technical",
-            "expected_evidence": "Explains dual-writing, backfill batching with rate-limiting, shadow reads, and final switch-over without taking table locks.",
-            "suggested_follow_ups": [
-                "How do you guarantee write order between the old and new columns?",
-                "What rollback safety checks are in place?"
-            ],
-            "time_allocation_minutes": 5,
-        },
-        {
-            "id": 6,
-            "question_text": "In a microservices architecture, how do you manage distributed transactions without relying on heavy two-phase commit (2PC)?",
-            "competency": "Microservice Architecture & Sagas",
-            "difficulty": diff,
-            "question_type": "architectural",
-            "expected_evidence": "Articulates the Saga pattern (choreography vs orchestration) and compensating transactions with idempotent handlers.",
-            "suggested_follow_ups": [
-                "How do you handle compensating transaction failures?",
-                "How do you surface transaction state to client UIs?"
-            ],
-            "time_allocation_minutes": 5,
-        },
-        {
-            "id": 7,
-            "question_text": "What strategies do you employ to prevent SSRF, SQL injection, and broken object-level authorization (BOLA) in high-throughput API gateways?",
-            "competency": "API Security & Defensive Engineering",
-            "difficulty": diff,
-            "question_type": "technical",
-            "expected_evidence": "Private IP subnet validation, parameterization, cryptographic token claims verification, and tenant ownership scoping.",
-            "suggested_follow_ups": [
-                "How do you protect internal cloud metadata endpoints (169.254.169.254)?",
-                "How is rate limiting enforced at scale?"
-            ],
-            "time_allocation_minutes": 4,
-        },
-        {
-            "id": 8,
-            "question_text": "If our primary database cluster suffered complete data-center failure, describe the recovery process to restore operations with minimal RPO and RTO.",
-            "competency": "Disaster Recovery & Business Continuity",
-            "difficulty": "Staff",
-            "question_type": "architectural",
-            "expected_evidence": "Differentiates RPO vs RTO, active-active vs active-passive replication topologies, and automated DNS failover.",
-            "suggested_follow_ups": [
-                "How do you verify backup integrity before a crisis?"
-            ],
-            "time_allocation_minutes": 5,
-        },
-        {
-            "id": 9,
-            "question_text": "How do you measure and optimize frontend web vitals (LCP, FID/INP, CLS) in complex single-page or SSR applications?",
-            "competency": "Performance Optimization",
-            "difficulty": "Medium",
-            "question_type": "technical",
-            "expected_evidence": "Identifies critical render paths, asset preloading, server-side caching, and DOM hydration cost reduction.",
-            "suggested_follow_ups": [
-                "How do third-party script tags affect LCP?"
-            ],
-            "time_allocation_minutes": 4,
-        },
-        {
-            "id": 10,
-            "question_text": "Reflecting on your technical journey, what is the most challenging technical mistake you made in production, and what institutional safeguards did you implement afterward?",
-            "competency": "Continuous Improvement & Resilience",
-            "difficulty": "Medium",
-            "question_type": "behavioral",
-            "expected_evidence": "Transparent post-mortem culture, root-cause depth, automated regression testing, and blameless retrospective leadership.",
-            "suggested_follow_ups": [
-                "How did you communicate the issue to leadership and impacted customers?"
-            ],
-            "time_allocation_minutes": 5,
-        },
-    ]
+    # Extract rich context from Job Description and Candidate Profile
+    jd = job_description or {}
+    jd_skills = jd.get("required_skills", []) + jd.get("preferred_skills", [])
+    jd_responsibilities = jd.get("responsibilities", [])
+    jd_competencies = jd.get("competencies", [])
+    seniority = jd.get("seniority") or ("Staff" if any(w in job_role.lower() for w in ["staff", "principal", "lead", "director"]) else ("Junior" if "junior" in job_role.lower() else "Senior"))
 
-    selected_questions = all_questions_bank[:target_count]
+    # Determine skills to feature in questions
+    if not jd_skills:
+        # Fallback to skills extracted from role name or common technical domains
+        role_lower = job_role.lower()
+        if "program manager" in role_lower or "tpm" in role_lower:
+            jd_skills = ["Technical Program Management", "System Architecture", "Dependency Mapping", "Telemetry & SLOs", "Agile / Scrum"]
+        elif "product manager" in role_lower or "pm" in role_lower:
+            jd_skills = ["Product Strategy", "PRD Authoring", "Telemetry & Metrics", "A/B Testing", "System Design"]
+        elif "ai" in role_lower or "machine learning" in role_lower or "ml" in role_lower:
+            jd_skills = ["LLMs", "RAG & Vector DBs", "PyTorch", "Model Inference Latency", "Python"]
+        elif "devops" in role_lower or "sre" in role_lower or "cloud" in role_lower:
+            jd_skills = ["Kubernetes", "Docker", "Terraform", "CI/CD Automation", "AWS/Cloud"]
+        elif "data" in role_lower:
+            jd_skills = ["Apache Kafka", "Apache Spark", "SQL", "Snowflake", "Data Warehousing"]
+        elif "security" in role_lower:
+            jd_skills = ["IAM", "Application Security", "Threat Modeling", "OWASP", "Cloud Security"]
+        else:
+            jd_skills = ["System Architecture", "API Design", "Distributed Systems", "Cloud Infrastructure", "Performance Optimization"]
+
+    s1 = jd_skills[0] if len(jd_skills) > 0 else "System Architecture"
+    s2 = jd_skills[1] if len(jd_skills) > 1 else "Scalable Distributed Services"
+    s3 = jd_skills[2] if len(jd_skills) > 2 else "Data Reliability & Consistency"
+    s4 = jd_skills[3] if len(jd_skills) > 3 else "Cloud Infrastructure"
+
+    resp1 = jd_responsibilities[0] if jd_responsibilities else f"lead core technical architecture and delivery for {job_role}"
+    resp2 = jd_responsibilities[1] if len(jd_responsibilities) > 1 else "orchestrate cross-functional engineering execution and trade-offs"
+
+    role_lower = job_role.lower()
+    is_tpm_or_pm = any(k in role_lower for k in ["program manager", "product manager", "tpm", "pm"])
+    is_ai_ml = any(k in role_lower for k in ["ai", "machine learning", "ml", "deep learning", "llm"])
+    is_devops_sre = any(k in role_lower for k in ["devops", "sre", "site reliability", "infrastructure", "cloud platform"])
+    is_data = any(k in role_lower for k in ["data engineer", "data platform", "etl", "big data", "data science"])
+
+    generated_questions: List[Dict[str, Any]] = []
+
+    # Question 1: System & Technical Breadth / Scoping
+    if is_tpm_or_pm:
+        q1_text = f"Can you walk me through how you architected and delivered a complex technical program involving {s1} and {s2} for a {job_role} scope? How did you define system boundaries and map critical path dependencies?"
+        q1_comp = "Technical Architecture & Program Scoping"
+        q1_ev = "Clearly articulates technical system boundaries, multi-team dependencies, critical path sequencing, and architectural trade-offs using STAR."
+        q1_followups = ["What was the most critical technical dependency that had the highest risk of delaying the program?", "How did you establish measurable launch milestones with engineering leads?"]
+    elif is_ai_ml:
+        q1_text = f"Can you walk me through the end-to-end architecture of a production AI/ML system you designed or scaled using {s1} and {s2}? How did you optimize inference latency, context limits, and throughput?"
+        q1_comp = "AI System Architecture & Model Serving"
+        q1_ev = "Explains model serving topology, embedding/retrieval caching, batching trade-offs, and throughput SLAs under high load."
+        q1_followups = ["How did you prevent GPU memory fragmentation during peak traffic?", "What was your strategy for measuring and preventing model hallucinations or drift?"]
+    elif is_devops_sre:
+        q1_text = f"Can you walk me through how you architected resilient cloud infrastructure and deployment pipelines utilizing {s1} and {s2} for a {job_role} scope?"
+        q1_comp = "Infrastructure as Code & Cloud Automation"
+        q1_ev = "Detailed explanation of multi-region topology, automated CI/CD rollback safety, and immutable infrastructure practices."
+        q1_followups = ["How did you isolate blast radiuses across development and production clusters?", "What telemetry signals did you monitor during canary releases?"]
+    elif is_data:
+        q1_text = f"Can you walk me through the architecture of a high-throughput data platform you built using {s1} and {s2}? How did you ensure data consistency, partitioning efficiency, and schema evolution?"
+        q1_comp = "Data Pipeline Architecture & Stream Processing"
+        q1_ev = "Explains stream/batch ingestion boundaries, partition keys, compaction, and schema registry management."
+        q1_followups = ["How did you handle late-arriving or out-of-order data events?", "What was your backfill strategy without impacting production consumer latency?"]
+    else:
+        q1_text = f"Can you walk me through the architecture of a high-impact system you designed or scaled relevant to the {job_role} position using {s1} and {s2}?"
+        q1_comp = "System Architecture & Breadth"
+        q1_ev = "Clearly states requirements, traffic volumes, component boundaries, and technology trade-offs."
+        q1_followups = ["What was the single biggest bottleneck in that design?", "How did you monitor data consistency under peak load?"]
+
+    generated_questions.append({
+        "id": 1,
+        "question_text": q1_text,
+        "competency": q1_comp,
+        "difficulty": "Medium",
+        "question_type": "architectural",
+        "expected_evidence": q1_ev,
+        "suggested_follow_ups": q1_followups,
+        "time_allocation_minutes": 5,
+    })
+
+    # Question 2: Production Incident / Risk Mitigation Scenario
+    if is_tpm_or_pm:
+        q2_text = f"Suppose a critical breaking change or severe performance bottleneck emerges in {s1} two weeks before a major launch milestone. Walk me through your playbook for technical triage, impact isolation, and alignment across engineering teams."
+        q2_comp = "Technical Risk Mitigation & Incident Triage"
+        q2_ev = "Methodical incident triage: dependency chain tracing, contingency/rollback branches, technical compromise evaluation, and transparent status communication."
+        q2_followups = ["How did you handle the trade-off between delaying the milestone vs shipping with degraded functionality?", "How did you communicate the risk to executive stakeholders?"]
+    elif is_ai_ml:
+        q2_text = f"Suppose your production {s1} service begins experiencing intermittent 504 timeouts and elevated tail latency (p99 > 2s) under unexpected traffic surges. How do you systematically isolate and remediate the root cause?"
+        q2_comp = "Inference Resilience & Production Triage"
+        q2_ev = "Diagnostic triage using distributed traces, queue depths, model memory profiles, and token-streaming bottlenecks before executing mitigations."
+        q2_followups = ["When would you shed load or degrade retrieval depth vs spinning up additional GPU worker nodes?", "How do you prevent cascading failures in upstream client applications?"]
+    else:
+        q2_text = f"Suppose a critical service running {s1} experiences sudden tail-latency degradation (p99) and intermittent timeouts under heavy load. How do you systematically triage, isolate, and remediate the root cause?"
+        q2_comp = "Production Incident Triage & Resilience"
+        q2_ev = "Methodical triage using distributed traces, metrics, connection pool starvation, and database slow-log inspection before remediation."
+        q2_followups = ["How would you prevent cascading failures across downstream services?", "When would you trip a circuit breaker vs shedding load?"]
+
+    generated_questions.append({
+        "id": 2,
+        "question_text": q2_text,
+        "competency": q2_comp,
+        "difficulty": diff,
+        "question_type": "technical",
+        "expected_evidence": q2_ev,
+        "suggested_follow_ups": q2_followups,
+        "time_allocation_minutes": 5,
+    })
+
+    # Question 3: Deep Technical Trade-offs on JD Tech Stack
+    if is_tpm_or_pm:
+        q3_text = f"When partnering with engineering architects on {resp1}, how do you evaluate technical trade-offs between deliverable velocity, system technical debt, and scalability constraints involving {s3}?"
+        q3_comp = "Engineering Trade-offs & Architecture Governance"
+        q3_ev = "Structured non-functional requirement framework, data-driven POC evaluation, cost-of-delay analysis, and objective consensus building."
+        q3_followups = ["How do you push back on premature optimization that threatens delivery dates?", "What criteria do you use to approve technical debt paydown in program roadmaps?"]
+    elif is_ai_ml:
+        q3_text = f"When implementing {resp1}, how do you evaluate the architectural trade-offs between fine-tuning a specialized model vs utilizing RAG retrieval with vector databases ({s3}) regarding latency, accuracy, cost, and data freshness?"
+        q3_comp = "Model Architecture & Retrieval Trade-offs"
+        q3_ev = "Compares context window limits, embedding drift, token costs, latency frontiers, and training iteration cycles."
+        q3_followups = ["How do you benchmark retrieval accuracy (MRR, NDCG) against human eval sets?", "When does fine-tuning become economically justified over RAG?"]
+    else:
+        q3_text = f"How do you evaluate consistency vs availability and performance trade-offs when designing distributed systems with {s1} and {s3} under network partition events?"
+        q3_comp = "Distributed Systems & Consistency"
+        q3_ev = "Grounds answer in CAP/PACELC theorem, compares linearizable consensus with eventual consistency, and addresses idempotent deduplication."
+        q3_followups = ["How do you handle out-of-order event delivery?", "What is your dead-letter queue replay strategy?"]
+
+    generated_questions.append({
+        "id": 3,
+        "question_text": q3_text,
+        "competency": q3_comp,
+        "difficulty": diff,
+        "question_type": "trade_off",
+        "expected_evidence": q3_ev,
+        "suggested_follow_ups": q3_followups,
+        "time_allocation_minutes": 6,
+    })
+
+    # Question 4: Behavioral & Cross-Functional Alignment (STAR)
+    q4_text = f"Tell me about a time in your {seniority} {job_role} experience where an engineering lead, architect, or stakeholder strongly disagreed with your proposed technical approach or roadmap for {resp2}. How did you resolve the friction and reach alignment?"
+    q4_comp = "Technical Leadership & Stakeholder Alignment"
+    q4_ev = "Structured using STAR method; demonstrates objective data benchmarking, active listening, executive communication, and constructive alignment without ego."
+    q4_followups = ["If the consensus could not be reached, what escalation framework did you use?", "What lasting safeguards or team processes came out of that disagreement?"]
+
+    generated_questions.append({
+        "id": 4,
+        "question_text": q4_text,
+        "competency": q4_comp,
+        "difficulty": "Medium",
+        "question_type": "behavioral",
+        "expected_evidence": q4_ev,
+        "suggested_follow_ups": q4_followups,
+        "time_allocation_minutes": 4,
+    })
+
+    # Question 5: Zero-Downtime Operations, Telemetry & Quality Standards
+    if is_tpm_or_pm:
+        q5_text = f"How do you establish quantitative program telemetry, launch verification gates, and operational SLOs when rolling out new systems built on {s1} and {s4} across distributed engineering teams?"
+        q5_comp = "Program Telemetry & Launch Governance"
+        q5_ev = "Defines quantifiable success metrics, automated CI/CD canary verification, error budgets, and post-launch rollback criteria."
+        q5_followups = ["What specific telemetry signals tell you that a launch is failing before customers complain?", "How do you align multiple engineering teams on shared SLO definitions?"]
+    else:
+        q5_text = f"How would you design a zero-downtime migration and automated rollback strategy for a high-throughput production service running {s1} that is actively processing live traffic?"
+        q5_comp = "Zero-Downtime Operations & Reliability"
+        q5_ev = "Explains dual-writing, backfill batching with rate-limiting, shadow reads, canary gating, and final switch-over without locking."
+        q5_followups = ["How do you guarantee write consistency between old and new paths?", "What automated rollback safety checks are in place?"]
+
+    generated_questions.append({
+        "id": 5,
+        "question_text": q5_text,
+        "competency": q5_comp,
+        "difficulty": diff,
+        "question_type": "technical",
+        "expected_evidence": q5_ev,
+        "suggested_follow_ups": q5_followups,
+        "time_allocation_minutes": 5,
+    })
+
+    # Question 6: Scaling & Distributed Coordination
+    generated_questions.append({
+        "id": 6,
+        "question_text": f"In a multi-service architecture utilizing {s1} and {s2}, how do you manage distributed coordination, service-to-service authentication, and data integrity without introducing single points of failure?",
+        "competency": "Scalable Systems & Distributed Coordination",
+        "difficulty": diff,
+        "question_type": "architectural",
+        "expected_evidence": "Articulates async event-driven patterns, token verification, circuit breaking, and idempotent consumers.",
+        "suggested_follow_ups": ["How do you manage cross-service transaction failures?", "How do you enforce tenant isolation at scale?"],
+        "time_allocation_minutes": 5,
+    })
+
+    # Question 7: Security & Defensive Architecture
+    generated_questions.append({
+        "id": 7,
+        "question_text": f"What defensive security engineering strategies do you enforce to protect API endpoints and data flows in {job_role} systems against unauthorized access, credential leakage, and injection attacks?",
+        "competency": "API Security & Defensive Engineering",
+        "difficulty": diff,
+        "question_type": "technical",
+        "expected_evidence": "Network boundary validation, cryptographic claims verification, least-privilege IAM policies, and automated vulnerability scanning.",
+        "suggested_follow_ups": ["How do you safeguard internal service credentials in cloud environments?", "How is rate limiting enforced across distributed edges?"],
+        "time_allocation_minutes": 4,
+    })
+
+    # Question 8: Disaster Recovery & Business Continuity
+    generated_questions.append({
+        "id": 8,
+        "question_text": f"If your primary {s1} cluster or cloud availability zone suffered complete outage, describe your recovery protocol to restore {job_role} operations with minimal RPO and RTO.",
+        "competency": "Disaster Recovery & Business Continuity",
+        "difficulty": "Staff",
+        "question_type": "architectural",
+        "expected_evidence": "Differentiates RPO vs RTO, active-active vs active-passive replication topologies, automated health checks, and DNS failover.",
+        "suggested_follow_ups": ["How do you test and verify disaster recovery before an incident happens?"],
+        "time_allocation_minutes": 5,
+    })
+
+    # Question 9: Performance Optimization & Bottlenecks
+    generated_questions.append({
+        "id": 9,
+        "question_text": f"How do you profile, identify, and eliminate subtle performance bottlenecks in {s1} and {s2} systems when scaling from prototype to production load?",
+        "competency": "Performance Optimization & Benchmarking",
+        "difficulty": "Medium",
+        "question_type": "technical",
+        "expected_evidence": "Flame graphs, CPU/memory profiling, query plan inspection, connection pooling, and caching layer design.",
+        "suggested_follow_ups": ["What metrics indicate a memory leak vs expected garbage collection overhead?"],
+        "time_allocation_minutes": 4,
+    })
+
+    # Question 10: Retrospective & Institutional Safeguards
+    generated_questions.append({
+        "id": 10,
+        "question_text": f"Reflecting on your {seniority} {job_role} journey, tell me about the most challenging production bug, delivery misstep, or architecture oversight you encountered, and what institutional safeguards you built afterward.",
+        "competency": "Continuous Improvement & Resilience",
+        "difficulty": "Medium",
+        "question_type": "behavioral",
+        "expected_evidence": "Blameless post-mortem culture, root-cause depth, automated regression testing, and systemic process improvements.",
+        "suggested_follow_ups": ["How did you communicate the issue to leadership and impacted customers?"],
+        "time_allocation_minutes": 5,
+    })
+
+    selected_questions = generated_questions[:target_count]
+
+    # Dynamically build competency weights matching the selected questions
+    weight_per_question = round(1.0 / len(selected_questions), 2)
+    competency_weights = {}
+    for q in selected_questions:
+        competency_weights[q["competency"]] = competency_weights.get(q["competency"], 0.0) + weight_per_question
 
     return {
         "interview_objectives": [
-            f"Assess core competencies for {job_role} under {rigor_label} evaluation standards.",
-            "Probe technical architecture, trade-offs, and failure recovery depth.",
-            "Evaluate structured articulation, problem-solving, and communication clarity.",
+            f"Assess core competencies for {seniority} {job_role} under {rigor_label} evaluation standards.",
+            f"Probe technical architecture, trade-offs, and failure recovery depth with {s1} and {s2}.",
+            f"Evaluate structured articulation, problem-solving, and communication clarity derived from JD requirements.",
         ],
         "questions": selected_questions,
         "total_estimated_minutes": sum(q["time_allocation_minutes"] for q in selected_questions),
-        "competency_weights": {
-            "System Architecture & Breadth": 0.30,
-            "Distributed Systems & Consistency": 0.25,
-            "Production Incident Triage & Resilience": 0.25,
-            "Technical Leadership & Communication": 0.20,
-        },
+        "competency_weights": competency_weights,
     }

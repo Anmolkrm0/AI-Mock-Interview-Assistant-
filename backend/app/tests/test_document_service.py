@@ -164,6 +164,18 @@ async def test_role_detection_from_filename():
         filename="Lead Data Engineer JD.docx",
     )
     assert "Data Engineer" in res["primary_role"]
+    assert res.get("primary_seniority") == "Lead"
     assert len(res["detected_roles"]) >= 1
+
+
+def test_extract_seniority_levels():
+    from backend.app.services.document_service import extract_seniority_from_text
+    assert extract_seniority_from_text("Seeking a Staff Software Engineer with 8+ years", "jd.pdf") == "Staff"
+    assert extract_seniority_from_text("Principal Architect needed", "") == "Principal"
+    assert extract_seniority_from_text("Looking for an intern to join our engineering team", "intern_posting.pdf") == "Intern"
+    assert extract_seniority_from_text("Director of Engineering leading 4 pods", "") == "Director"
+    assert extract_seniority_from_text("Must have 6+ years of experience in distributed systems", "") == "Senior"
+    assert extract_seniority_from_text("Requires 3 years of software development experience", "") == "Mid-Level"
+    assert extract_seniority_from_text("Associate entry-level engineer", "") == "Junior"
 
 

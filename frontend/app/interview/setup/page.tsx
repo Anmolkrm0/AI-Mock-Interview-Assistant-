@@ -25,6 +25,17 @@ import {
 } from "lucide-react";
 import { uploadResumeApi, uploadJobDescriptionApi, detectRolesApi, createInterviewApi } from "@/services/api";
 
+const SENIORITY_LEVELS = [
+  "Intern",
+  "Junior",
+  "Mid-Level",
+  "Senior",
+  "Lead",
+  "Staff",
+  "Principal",
+  "Director",
+];
+
 export default function InterviewSetupPage() {
   const router = useRouter();
 
@@ -44,10 +55,12 @@ export default function InterviewSetupPage() {
   const [jdUploading, setJdUploading] = useState(false);
   const [jdError, setJdError] = useState<string | null>(null);
 
-  // Step D: Role Selection state (dynamically extracted or user-typed)
+  // Step C: Role & Seniority Selection state (dynamically extracted or user-typed)
   const [detectedRoles, setDetectedRoles] = useState<string[]>([]);
   const [selectedRole, setSelectedRole] = useState<string>("");
   const [roleSource, setRoleSource] = useState<"extracted" | "custom" | null>(null);
+  const [selectedSeniority, setSelectedSeniority] = useState<string>("Senior");
+  const [senioritySource, setSenioritySource] = useState<"extracted" | "custom" | null>(null);
   const [isDetectingRoles, setIsDetectingRoles] = useState(false);
 
   // Step E & F: Duration & Rigor
@@ -77,9 +90,13 @@ export default function InterviewSetupPage() {
       setJdDocId(jdResult.id);
       if (jdResult.extracted_data) {
         setParsedJd(jdResult.extracted_data);
-        if (jdResult.extracted_data.job_title) {
-          setSelectedRole(jdResult.extracted_data.job_title);
+        if (jdResult.extracted_data.base_role || jdResult.extracted_data.job_title) {
+          setSelectedRole(jdResult.extracted_data.base_role || jdResult.extracted_data.job_title);
           setRoleSource("extracted");
+        }
+        if (jdResult.extracted_data.seniority) {
+          setSelectedSeniority(jdResult.extracted_data.seniority);
+          setSenioritySource("extracted");
         }
       }
 
@@ -100,8 +117,14 @@ export default function InterviewSetupPage() {
         if (rolesRes.detected_roles && rolesRes.detected_roles.length > 0) {
           const roleTitles = rolesRes.detected_roles.map((r: any) => r.title);
           setDetectedRoles(roleTitles);
-          setSelectedRole(rolesRes.primary_role || roleTitles[0]);
-          setRoleSource("extracted");
+          if (!selectedRole || roleSource === "extracted") {
+            setSelectedRole(rolesRes.primary_role || roleTitles[0]);
+            setRoleSource("extracted");
+          }
+        }
+        if (rolesRes.primary_seniority) {
+          setSelectedSeniority(rolesRes.primary_seniority);
+          setSenioritySource("extracted");
         }
       }
     } catch (err: any) {
@@ -194,10 +217,17 @@ export default function InterviewSetupPage() {
     setIsStarting(true);
 
     try {
+      const cleanRole = selectedRole.trim();
+      const currentSeniority = selectedSeniority.trim();
+      let effectiveRole = cleanRole;
+      if (currentSeniority && !cleanRole.toLowerCase().includes(currentSeniority.toLowerCase())) {
+        effectiveRole = `${currentSeniority} ${cleanRole}`;
+      }
+
       const interview = await createInterviewApi({
         resume_document_id: resumeDocId || undefined,
         job_description_document_id: jdDocId || undefined,
-        job_role: selectedRole,
+        job_role: effectiveRole,
         duration_minutes: duration,
         evaluation_rigor: rigor,
       });
@@ -527,31 +557,94 @@ export default function InterviewSetupPage() {
           </section>
 
 
-          {/* STEP C: Target Job Role */}
+          {/* STEP C: Target Job Role & Seniority */}
           <section className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
               <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-extrabold flex items-center justify-center">
                   C
                 </span>
                 Target Job Role &amp; Seniority
               </h2>
-              {roleSource === "extracted" && selectedRole && (
-                <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-semibold flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5" /> Extracted from JD
-                </span>
-              )}
-              {roleSource === "custom" && selectedRole && (
-                <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold flex items-center gap-1">
-                  <Edit3 className="w-3.5 h-3.5" /> Custom Target Role
-                </span>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {senioritySource === "extracted" && selectedSeniority && (
+                  <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-xs font-semibold flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5" /> {selectedSeniority} Seniority
+                  </span>
+                )}
+                {roleSource === "extracted" && selectedRole && (
+                  <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-semibold flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5" /> Role Extracted
+                  </span>
+                )}
+                {roleSource === "custom" && selectedRole && (
+                  <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold flex items-center gap-1">
+                    <Edit3 className="w-3.5 h-3.5" /> Custom Target
+                  </span>
+                )}
+              </div>
             </div>
             <p className="text-xs text-slate-500 mb-4">
-              Type any target role of your choice, or select from roles auto-extracted from your Job Description above.
+              Select or customize your target seniority and role. Both are automatically extracted from your uploaded Job Description.
             </p>
 
-            <div className="space-y-3">
+            {/* Target Summary Banner */}
+            {selectedRole && (
+              <div className="mb-5 p-3.5 rounded-xl bg-gradient-to-r from-blue-50 via-indigo-50/60 to-blue-50 border border-blue-200/80 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-base">🎯</span>
+                  <div>
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-600 block">
+                      Target Interview Profile
+                    </span>
+                    <span className="text-sm font-bold text-slate-900">
+                      {selectedRole.toLowerCase().includes(selectedSeniority.toLowerCase())
+                        ? selectedRole
+                        : `${selectedSeniority} ${selectedRole}`}
+                    </span>
+                  </div>
+                </div>
+                <span className="text-xs font-semibold text-blue-700 bg-white px-2.5 py-1 rounded-lg border border-blue-200 shadow-2xs">
+                  {selectedSeniority}
+                </span>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              {/* Seniority Pill Selector */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2 flex items-center justify-between">
+                  <span>Seniority Level</span>
+                  <span className="text-[11px] font-normal lowercase text-slate-400">
+                    {senioritySource === "extracted" ? "auto-detected from JD" : "custom selection"}
+                  </span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {SENIORITY_LEVELS.map((level) => {
+                    const isSelected = selectedSeniority.toLowerCase() === level.toLowerCase();
+                    return (
+                      <button
+                        key={level}
+                        type="button"
+                        onClick={() => {
+                          setSelectedSeniority(level);
+                          setSenioritySource("custom");
+                        }}
+                        className={`text-xs px-3.5 py-2 rounded-xl font-semibold transition-all border flex items-center gap-1.5 ${
+                          isSelected
+                            ? "bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/20"
+                            : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-white hover:border-slate-300"
+                        }`}
+                      >
+                        {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                        {level}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Target Role Title */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                   <span>Target Role Title</span>
@@ -568,7 +661,7 @@ export default function InterviewSetupPage() {
                       setSelectedRole(e.target.value);
                       setRoleSource("custom");
                     }}
-                    placeholder="Type any target role (e.g. Senior Backend Engineer, DevOps Lead, Data Scientist...)"
+                    placeholder="Type any target role (e.g. AI Technical Program Manager, DevOps Lead, Data Scientist...)"
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-medium text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white placeholder:text-slate-400"
                   />
                 </div>

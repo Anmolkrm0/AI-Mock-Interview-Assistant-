@@ -17,4 +17,5 @@ class RoleDetectionRequest(BaseModel):
 class RoleDetectionResponse(BaseModel):
     detected_roles: List[DetectedRole] = Field(..., min_length=1)
     primary_role: str = Field(..., description="Default selected role")
+    primary_seniority: Optional[str] = Field("Senior", description="Detected primary seniority level")
 
