@@ -48,8 +48,9 @@ class Settings(BaseSettings):
 
     # Gemini Settings
     GEMINI_API_KEY: str = ""
-    GEMINI_TEXT_MODEL: str = "gemini-2.5-flash"
-    GEMINI_LIVE_MODEL: str = "gemini-2.0-flash-exp"
+    GEMINI_TEXT_MODEL: str = "gemini-3.5-flash"
+    GEMINI_LIVE_MODEL: str = "gemini-3.8-live"
+
 
     # Groq Settings (optional fallback)
     GROQ_API_KEY: str = ""
