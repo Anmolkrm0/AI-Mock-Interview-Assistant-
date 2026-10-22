@@ -18,6 +18,8 @@ import {
   AlertCircle, 
   Loader2, 
   Volume2,
+  VolumeX,
+  Radio,
   Award,
   CheckCircle2,
   Sparkles
@@ -71,7 +73,18 @@ export default function LiveInterviewPage() {
   // Text Answer Mode
   const [isTextMode, setIsTextMode] = useState(false);
   const [textAnswer, setTextAnswer] = useState("");
+
+  // Speech Synthesis & Recognition state
+  const isSpeakingRef = useRef(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const [spokenTranscript, setSpokenTranscript] = useState("");
+  const [interimTranscript, setInterimTranscript] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(true);
+  const isListeningRef = useRef(false);
+  const isMicMutedRef = useRef(false);
+  const isTextModeRef = useRef(false);
 
   // Confirm End Modal
   const [showEndModal, setShowEndModal] = useState(false);
@@ -102,7 +115,208 @@ export default function LiveInterviewPage() {
     };
   }, []);
 
-  // 2. Initialize WebSocket Connection
+  // 2. Synchronize configuration refs
+  useEffect(() => {
+    isMicMutedRef.current = isMicMuted;
+    if (isMicMuted) {
+      stopListening();
+    } else if (!isSpeakingRef.current && !isTextModeRef.current) {
+      startListening();
+    }
+  }, [isMicMuted]);
+
+  useEffect(() => {
+    isTextModeRef.current = isTextMode;
+    if (isTextMode) {
+      stopListening();
+    } else if (!isSpeakingRef.current && !isMicMutedRef.current) {
+      startListening();
+    }
+  }, [isTextMode]);
+
+  // 3. Audio Speech Synthesis (AI Interviewer Speaks Question)
+  const speakText = (text: string, onEnd?: () => void) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      console.warn("Speech synthesis not supported in this browser.");
+      if (onEnd) onEnd();
+      return;
+    }
+
+    try {
+      window.speechSynthesis.cancel();
+      // Temporarily pause recognition while interviewer speaks so computer speaker is not captured
+      stopListening();
+
+      // Clean markdown tags and asterisks from speech
+      const cleanText = text.replace(/[*_#`~]/g, " ").replace(/\s+/g, " ").trim();
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.rate = 0.95;
+      utterance.pitch = 1.0;
+      utterance.lang = "en-US";
+
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find(
+        (v) =>
+          v.lang.startsWith("en") &&
+          (v.name.includes("Google") ||
+            v.name.includes("Natural") ||
+            v.name.includes("Samantha") ||
+            v.name.includes("Daniel") ||
+            v.name.includes("Karen") ||
+            v.name.includes("Alex"))
+      ) || voices.find((v) => v.lang.startsWith("en"));
+
+      if (preferred) {
+        utterance.voice = preferred;
+      }
+
+      setIsSpeaking(true);
+      isSpeakingRef.current = true;
+
+      utterance.onend = () => {
+        setIsSpeaking(false);
+        isSpeakingRef.current = false;
+        if (onEnd) onEnd();
+        // Once interviewer finishes speaking, automatically start listening to candidate
+        if (!isMicMutedRef.current && !isTextModeRef.current) {
+          startListening();
+        }
+      };
+
+      utterance.onerror = (e) => {
+        console.warn("Speech synthesis error:", e);
+        setIsSpeaking(false);
+        isSpeakingRef.current = false;
+        if (onEnd) onEnd();
+        if (!isMicMutedRef.current && !isTextModeRef.current) {
+          startListening();
+        }
+      };
+
+      // Ensure speech synthesis audio context is active
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.warn("Speech synthesis execution error:", err);
+      setIsSpeaking(false);
+      isSpeakingRef.current = false;
+      if (onEnd) onEnd();
+      if (!isMicMutedRef.current && !isTextModeRef.current) {
+        startListening();
+      }
+    }
+  };
+
+  // 4. Real-time Speech-to-Text Recognition (Transcribes Candidate's Voice Live)
+  const startListening = () => {
+    if (!recognitionRef.current || isSpeakingRef.current || isMicMutedRef.current || isTextModeRef.current) {
+      return;
+    }
+    try {
+      isListeningRef.current = true;
+      recognitionRef.current.start();
+      setIsListening(true);
+    } catch (e) {
+      // Recognition may already be running
+    }
+  };
+
+  const stopListening = () => {
+    isListeningRef.current = false;
+    setIsListening(false);
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+    }
+  };
+
+  // 5. Initialize Speech Recognition & Voices
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+    }
+
+    const SpeechRecognitionClass =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognitionClass) {
+      setSpeechSupported(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognitionClass();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        isListeningRef.current = true;
+      };
+
+      recognition.onresult = (event: any) => {
+        let interim = "";
+        let final = "";
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const item = event.results[i];
+          if (item.isFinal) {
+            final += item[0].transcript + " ";
+          } else {
+            interim += item[0].transcript;
+          }
+        }
+
+        if (final) {
+          setSpokenTranscript((prev) => (prev ? `${prev.trim()} ${final.trim()}` : final.trim()));
+        }
+        setInterimTranscript(interim);
+      };
+
+      recognition.onerror = (event: any) => {
+        if (event.error !== "no-speech") {
+          console.warn("Speech recognition error:", event.error);
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        // Automatically keep listening if active, unmuted, and interviewer is not talking
+        if (isListeningRef.current && !isMicMutedRef.current && !isSpeakingRef.current && !isTextModeRef.current) {
+          try {
+            recognition.start();
+          } catch (e) {}
+        }
+      };
+
+      recognitionRef.current = recognition;
+    } catch (err) {
+      console.warn("Failed to init SpeechRecognition:", err);
+      setSpeechSupported(false);
+    }
+
+    return () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {}
+      }
+    };
+  }, []);
+
+  // 6. Initialize WebSocket Connection
   useEffect(() => {
     let ws: WebSocket | null = null;
 
@@ -139,6 +353,8 @@ export default function LiveInterviewPage() {
             setQuestionIndex(payload.current_question_index);
             if (payload.current_question) {
               setCurrentQuestion(payload.current_question);
+              setSpokenTranscript("");
+              setInterimTranscript("");
               // Add AI welcome & question to transcript
               setTranscript([
                 {
@@ -154,12 +370,19 @@ export default function LiveInterviewPage() {
                   timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
                 },
               ]);
+
+              // Speak the first question aloud!
+              speakText(payload.current_question.text);
             }
           } else if (payload.type === "question_update") {
             setQuestionIndex(payload.current_question_index);
             setCurrentQuestion(payload.current_question);
-            setIsSpeaking(true);
-            setTimeout(() => setIsSpeaking(false), 3000);
+            setSpokenTranscript("");
+            setInterimTranscript("");
+
+            // Speak the incoming question out loud!
+            const speechText = payload.ai_speech_text || payload.current_question.text;
+            speakText(speechText);
 
             setTranscript((prev) => [
               ...prev,
@@ -170,7 +393,17 @@ export default function LiveInterviewPage() {
                 timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
               },
             ]);
+          } else if (payload.type === "retake_acknowledged") {
+            setSpokenTranscript("");
+            setInterimTranscript("");
+            if (currentQuestion) {
+              speakText(`Let's retake this question: ${currentQuestion.text}`);
+            }
           } else if (payload.type === "interview_finalized") {
+            stopListening();
+            if (typeof window !== "undefined" && "speechSynthesis" in window) {
+              window.speechSynthesis.cancel();
+            }
             router.push(`/interview/${interviewId}/processing`);
           } else if (payload.type === "error") {
             setErrorMsg(payload.message || "Interviewer session error");
@@ -197,6 +430,10 @@ export default function LiveInterviewPage() {
     connectWebSocket();
 
     return () => {
+      stopListening();
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
       if (ws) {
         ws.close();
       }
@@ -269,8 +506,41 @@ export default function LiveInterviewPage() {
     setIsTextMode(false);
   };
 
+  const handleSendVoiceAnswer = () => {
+    const fullAnswer = `${spokenTranscript} ${interimTranscript}`.trim();
+    if (!fullAnswer || !wsRef.current) return;
+
+    // Add to local transcript immediately
+    setTranscript((prev) => [
+      ...prev,
+      {
+        id: `voice-${Date.now()}`,
+        sender: "user",
+        text: fullAnswer,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      },
+    ]);
+
+    stopListening();
+    wsRef.current.send(
+      JSON.stringify({
+        type: "voice_answer_complete",
+        transcript: fullAnswer,
+      })
+    );
+
+    setSpokenTranscript("");
+    setInterimTranscript("");
+  };
+
   const handleSkipQuestion = () => {
     if (!wsRef.current) return;
+    stopListening();
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    setSpokenTranscript("");
+    setInterimTranscript("");
     setTranscript((prev) => [
       ...prev,
       {
@@ -285,6 +555,12 @@ export default function LiveInterviewPage() {
 
   const handleRetakeAnswer = () => {
     if (!wsRef.current) return;
+    stopListening();
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    setSpokenTranscript("");
+    setInterimTranscript("");
     wsRef.current.send(JSON.stringify({ type: "retake_answer" }));
     setTranscript((prev) => [
       ...prev,
@@ -298,6 +574,10 @@ export default function LiveInterviewPage() {
   };
 
   const handleEndInterview = () => {
+    stopListening();
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
     if (wsRef.current) {
       wsRef.current.send(JSON.stringify({ type: "end_interview" }));
     }
@@ -393,9 +673,22 @@ export default function LiveInterviewPage() {
               <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
                 Current Question • {currentQuestion?.competency || (errorMsg ? "Connection Error" : "System Design")}
               </span>
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-700 text-slate-300">
-                {currentQuestion?.difficulty || "Medium"}
-              </span>
+              <div className="flex items-center gap-2">
+                {currentQuestion && (
+                  <button
+                    type="button"
+                    onClick={() => speakText(currentQuestion.text)}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-xs font-semibold transition-all"
+                    title="Click to hear the interviewer speak this question aloud"
+                  >
+                    <Volume2 className="w-3.5 h-3.5" />
+                    <span>{isSpeaking ? "Speaking..." : "Listen Question"}</span>
+                  </button>
+                )}
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-700 text-slate-300">
+                  {currentQuestion?.difficulty || "Medium"}
+                </span>
+              </div>
             </div>
             <div className="text-lg font-semibold text-white leading-relaxed">
               {currentQuestion?.text ? (
@@ -414,7 +707,7 @@ export default function LiveInterviewPage() {
           </div>
 
           {/* Video / AI Persona Feed */}
-          <div className="relative flex-1 min-h-[300px] rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 flex items-center justify-center">
+          <div className="relative min-h-[260px] max-h-[360px] rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 flex items-center justify-center">
             {/* Candidate Local Camera View */}
             <video
               ref={videoRef}
@@ -443,6 +736,84 @@ export default function LiveInterviewPage() {
                   Speaking...
                 </span>
               )}
+            </div>
+          </div>
+
+          {/* Spoken Answer Live Transcription Panel (Real-Time Voice to Text) */}
+          <div className="mt-4 p-4 rounded-2xl bg-slate-800/90 border border-slate-700 shadow-md">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    isListening && !isSpeaking ? "bg-emerald-500 animate-pulse" : "bg-slate-500"
+                  }`}
+                />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
+                  <Mic className="w-3.5 h-3.5 text-emerald-400" />
+                  Your Spoken Answer (Live Transcribing)
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                {isListening && !isSpeaking && (
+                  <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Radio className="w-3 h-3 animate-spin text-emerald-400" />
+                    Listening to Microphone...
+                  </span>
+                )}
+                {isSpeaking && (
+                  <span className="text-[11px] font-semibold text-blue-300 bg-blue-950/60 border border-blue-800/60 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Volume2 className="w-3 h-3 animate-bounce" />
+                    Interviewer Speaking...
+                  </span>
+                )}
+                {(spokenTranscript || interimTranscript) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSpokenTranscript("");
+                      setInterimTranscript("");
+                    }}
+                    className="text-[11px] text-slate-400 hover:text-slate-200 underline transition-colors"
+                  >
+                    Clear &amp; Re-speak
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="relative">
+              <textarea
+                rows={3}
+                value={spokenTranscript + (interimTranscript ? ` ${interimTranscript}` : "")}
+                onChange={(e) => {
+                  setSpokenTranscript(e.target.value);
+                  setInterimTranscript("");
+                }}
+                placeholder={
+                  isSpeaking
+                    ? "Interviewer is speaking the question..."
+                    : isMicMuted
+                    ? "Microphone is muted. Click Unmute to answer."
+                    : "Speak your answer clearly into your microphone... As you talk, your words will transcribe here in text form in real-time."
+                }
+                className="w-full p-3 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 placeholder:text-slate-500 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 leading-relaxed resize-none font-sans"
+              />
+            </div>
+
+            <div className="mt-2.5 flex items-center justify-between gap-2">
+              <p className="text-[11px] text-slate-400">
+                💡 Speak your answer, review the text above, and click{" "}
+                <strong className="text-slate-300">Submit Spoken Answer</strong> when finished.
+              </p>
+              <button
+                type="button"
+                onClick={handleSendVoiceAnswer}
+                disabled={!(spokenTranscript || interimTranscript).trim()}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-md shadow-emerald-600/20"
+              >
+                <Send className="w-3.5 h-3.5" />
+                Submit Spoken Answer
+              </button>
             </div>
           </div>
 
@@ -547,6 +918,24 @@ export default function LiveInterviewPage() {
                   </div>
                 </div>
               ))}
+
+              {/* Live Preview of Candidate's Spoken Answer as they talk */}
+              {(spokenTranscript || interimTranscript) && (
+                <div className="flex flex-col items-end opacity-90 transition-opacity">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
+                    <span className="font-semibold text-emerald-400 flex items-center gap-1">
+                      <Mic className="w-3 h-3 text-emerald-400 animate-pulse" />
+                      Candidate (Transcribing Spoken Words...)
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-2xl text-xs sm:text-sm max-w-[88%] leading-relaxed bg-blue-600/80 border border-blue-400/40 text-white rounded-br-sm shadow-sm">
+                    {spokenTranscript}
+                    {interimTranscript && (
+                      <span className="text-blue-200 italic"> {interimTranscript}</span>
+                    )}
+                  </div>
+                </div>
+              )}
               <div ref={transcriptEndRef} />
             </div>
           </div>
