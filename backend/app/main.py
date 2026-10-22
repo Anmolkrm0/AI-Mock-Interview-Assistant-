@@ -5,6 +5,7 @@ from backend.app.api.v1.health import router as health_router
 from backend.app.api.v1.documents import router as documents_router
 from backend.app.api.v1.roles import router as roles_router
 from backend.app.api.v1.interviews import router as interviews_router
+from backend.app.api.v1.live_ws import router as live_ws_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -29,6 +30,7 @@ app.include_router(health_router, prefix=settings.API_V1_STR, tags=["Health"])
 app.include_router(documents_router, prefix=settings.API_V1_STR, tags=["Documents"])
 app.include_router(roles_router, prefix=settings.API_V1_STR, tags=["Roles"])
 app.include_router(interviews_router, prefix=settings.API_V1_STR, tags=["Interviews"])
+app.include_router(live_ws_router, prefix=settings.API_V1_STR, tags=["Live WebSocket"])
 
 
 @app.get("/")
