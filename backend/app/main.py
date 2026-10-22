@@ -6,6 +6,7 @@ from backend.app.api.v1.documents import router as documents_router
 from backend.app.api.v1.roles import router as roles_router
 from backend.app.api.v1.interviews import router as interviews_router
 from backend.app.api.v1.live_ws import router as live_ws_router
+from backend.app.api.v1.recordings import router as recordings_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -31,6 +32,7 @@ app.include_router(documents_router, prefix=settings.API_V1_STR, tags=["Document
 app.include_router(roles_router, prefix=settings.API_V1_STR, tags=["Roles"])
 app.include_router(interviews_router, prefix=settings.API_V1_STR, tags=["Interviews"])
 app.include_router(live_ws_router, prefix=settings.API_V1_STR, tags=["Live WebSocket"])
+app.include_router(recordings_router, prefix=settings.API_V1_STR, tags=["Recordings"])
 
 
 @app.get("/")
