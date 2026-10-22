@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><title>InterviewMind — AI-Powered Mock Interview Platform</title><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Plus+Jakarta+Sans:wght@600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"primary-fixed-dim":"#adc7ff","on-surface-variant":"#414754","surface-container-high":"#e4e8ee","on-primary":"#ffffff","error-container":"#ffdad6","surface-container-highest":"#dee3e9","on-tertiary-fixed":"#25005a","surface":"#f6faff","surface-bright":"#f6faff","inverse-primary":"#adc7ff","on-secondary":"#ffffff","surface-container-low":"#f0f4fa","primary-container":"#1a73e8","secondary":"#006a61","surface-container":"#eaeef4","on-secondary-container":"#006f66","primary-fixed":"#d8e2ff","tertiary-container":"#8d4efe","secondary-fixed":"#89f5e7","on-secondary-fixed":"#00201d","on-error":"#ffffff","surface-dim":"#d6dae0","surface-tint":"#005bc0","surface-variant":"#dee3e9","secondary-container":"#86f2e4","on-error-container":"#93000a","tertiary-fixed":"#eaddff","on-primary-fixed":"#001a41","tertiary":"#732de4","outline-variant":"#c1c6d6","on-primary-fixed-variant":"#004493","on-background":"#171c20","primary":"#005bbf","outline":"#727785","on-tertiary-container":"#ffffff","on-secondary-fixed-variant":"#005049","background":"#f6faff","on-tertiary":"#ffffff","on-surface":"#171c20","on-tertiary-fixed-variant":"#5a00c6","secondary-fixed-dim":"#6bd8cb","on-primary-container":"#ffffff","tertiary-fixed-dim":"#d2bbff","error":"#ba1a1a","inverse-on-surface":"#edf1f7","surface-container-lowest":"#ffffff","inverse-surface":"#2c3135"},"borderRadius":{"DEFAULT":"1rem","lg":"2rem","xl":"3rem","full":"9999px"},"spacing":{"space-xs":"0.25rem","margin":"2rem","space-sm":"0.5rem","space-md":"1rem","gutter-sm":"1rem","margin-mobile":"1rem","space-xl":"2.5rem","space-lg":"1.5rem","gutter":"1.5rem"},"fontFamily":{"label-lg":["Inter"],"title-lg":["Plus Jakarta Sans"],"headline-lg":["Plus Jakarta Sans"],"label-sm":["Inter"],"body-md":["Inter"],"display-lg-mobile":["Plus Jakarta Sans"],"headline-md":["Plus Jakarta Sans"],"label-md":["Inter"],"body-lg":["Inter"],"display-lg":["Plus Jakarta Sans"],"title-md":["Inter"],"body-sm":["Inter"]},"fontSize":{"label-lg":["14px",{"lineHeight":"20px","fontWeight":"600"}],"title-lg":["20px",{"lineHeight":"28px","fontWeight":"600"}],"headline-lg":["32px",{"lineHeight":"40px","fontWeight":"600"}],"label-sm":["11px",{"lineHeight":"14px","fontWeight":"500"}],"body-md":["14px",{"lineHeight":"20px","fontWeight":"400"}],"display-lg-mobile":["36px",{"lineHeight":"44px","fontWeight":"700"}],"headline-md":["24px",{"lineHeight":"32px","fontWeight":"600"}],"label-md":["12px",{"lineHeight":"16px","fontWeight":"500"}],"body-lg":["16px",{"lineHeight":"24px","fontWeight":"400"}],"display-lg":["56px",{"lineHeight":"64px","fontWeight":"700"}],"title-md":["16px",{"lineHeight":"24px","fontWeight":"600"}],"body-sm":["12px",{"lineHeight":"16px","fontWeight":"400"}]}}}};</script></head><body class="bg-surface font-body-md text-on-surface antialiased selection:bg-primary-fixed selection:text-on-primary-fixed"><header class="fixed top-0 left-0 right-0 z-50 bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-16 max-w-7xl mx-auto px-gutter flex items-center justify-between gap-space-md"><div class="flex items-center gap-space-lg"><a class="flex items-center gap-space-sm group" data-path="overview" href="#"><img alt="InterviewMind Logo" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1X8_6QfZQBlt2KdV5_FDIiVOCMR5t6qi2YfpclxT1NJghkKoAdPCVnCwkqEcB0mL5wagUTO_v5DbJugPO6hhTe3YH49cNES4JVS-dI_VX7Z3PUnXAijHSa0EJADaB2kEscsvse5xE_-MDjBIaT2S2YNs6NHs588JF9wJbqNgMslvEU8et7arIyc427ZNYZ-bAi2ob0N-ROcBA7zkEB0ypjdhf8FlE5KIzK6YiL29mJ350ot5Q9OZkCsG7k"/><span class="font-title-lg text-title-lg text-on-surface tracking-tight group-hover:text-primary transition-colors">InterviewMind</span><span class="inline-flex items-center px-space-sm py-space-xs rounded-full font-label-sm text-label-sm bg-primary-fixed text-on-primary-fixed-variant">AI Mock Prep</span></a><nav class="hidden lg:flex items-center gap-space-xs p-1 rounded-full bg-surface-container-low" data-active-classes="bg-surface-container-high text-on-surface font-semibold"><a class="px-space-md py-1.5 rounded-full font-label-md text-label-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all" data-path="overview" href="#">Overview</a><a class="px-space-md py-1.5 rounded-full font-label-md text-label-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all" data-path="new-interview" href="#">New Interview</a><a class="px-space-md py-1.5 rounded-full font-label-md text-label-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all" data-path="interview-session" href="#">Interview Session</a><a class="px-space-md py-1.5 rounded-full font-label-md text-label-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all" data-path="evaluation-report" href="#">Evaluation Report</a><a class="px-space-md py-1.5 rounded-full font-label-md text-label-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-all" data-path="history-and-analytics" href="#">History &amp; Analytics</a></nav></div><div class="flex items-center gap-space-md"><div class="hidden sm:inline-flex items-center gap-space-xs px-space-sm py-space-xs rounded-full bg-secondary-container text-on-secondary-fixed-variant font-label-sm text-label-sm"><span class="relative flex h-2 w-2"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-secondary"></span></span>AI Engine Ready</div><a class="inline-flex items-center justify-center px-space-md py-2 rounded-full bg-primary-fixed text-on-primary-fixed-variant font-label-md text-label-md hover:bg-primary hover:text-on-primary transition-all shadow-[0_1px_4px_rgba(0,0,0,0.06)]" data-path="new-interview" href="#">Start Mock</a><div class="relative flex items-center pl-space-xs"><button class="flex items-center gap-1.5 p-0.5 rounded-full hover:bg-surface-container-high transition-colors focus:outline-none focus:ring-2 focus:ring-primary" type="button"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuARgJudZKbIZ_RranUE2Fdo0airfrwNTmZCJvVFOUJn7_X2RHQiOkKKFT70xnXHwYlDvteAfNm0Q_r_GzUnOpcdN3xjIGcCVg7FYBb3M6PfeT9EBtLyalZ1rDdRrOi7_jCmnjg9exci8v8FMNJMncoNFP0CyVMojIBzUBESCge0C3W6L55q0wfBAbWBWfJLDRqbMeDQt7F6CGG7cRq_FoWDXdOvGv1-NeuU8rY_3gBRHq7MJLnM7Vzn"/><span class="material-symbols-outlined text-[18px] text-on-surface-variant">expand_more</span></button></div></div></div></header><main class="w-full pt-16 bg-surface min-h-[calc(100vh-140px)]"><div class="flex flex-col w-full">
+<div class="max-w-7xl mx-auto w-full px-gutter py-space-xl flex flex-col gap-space-xl">
+<!-- Top Level Dashboard Header & Analytics Hero -->
+<div class="flex flex-col gap-space-lg">
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-space-md">
+<div class="flex flex-col gap-space-xs max-w-2xl">
+<div class="inline-flex items-center gap-space-xs px-space-sm py-0.5 rounded-full bg-primary-fixed text-on-primary-fixed-variant font-label-sm text-label-sm w-fit mb-1">
+<span class="material-symbols-outlined text-[14px]">insights</span>
+            Continuous Calibration
+          </div>
+<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">Interview History &amp; Progress Analytics</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant">Track your growth, compare performance across interview difficulties, and review comprehensive reports.</p>
+</div>
+<!-- Mode Toggle: Demoing Data View vs Empty State View -->
+<div class="flex items-center self-start md:self-auto bg-surface-container-low p-1 rounded-full shadow-sm">
+<button class="px-space-md py-1.5 rounded-full font-label-md text-label-md transition-all bg-surface-container-lowest text-primary shadow-sm font-semibold flex items-center gap-1.5" id="viewActiveBtn" onclick="switchStateView('populated')">
+<span class="material-symbols-outlined text-[16px]">bar_chart</span>
+            Session Records (6)
+          </button>
+<button class="px-space-md py-1.5 rounded-full font-label-md text-label-md transition-all text-on-surface-variant hover:text-on-surface flex items-center gap-1.5" id="viewEmptyBtn" onclick="switchStateView('empty')">
+<span class="material-symbols-outlined text-[16px]">folder_off</span>
+            Empty State Preview
+          </button>
+</div>
+</div>
+<!-- Quick Metrics Strip + Performance Progression Chart -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-space-md" id="analyticsOverview">
+<!-- 4 Metric Cards Matrix (7 Cols) -->
+<div class="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-space-md">
+<!-- Metric 1: Total Sessions -->
+<div class="bg-surface-container-lowest p-space-lg rounded-DEFAULT shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface-variant">Total Interviews Completed</span>
+<div class="w-9 h-9 rounded-full bg-primary-fixed flex items-center justify-center text-on-primary-fixed-variant">
+<span class="material-symbols-outlined text-[20px]">videocam</span>
+</div>
+</div>
+<div class="mt-space-md flex items-baseline gap-space-xs">
+<span class="font-headline-lg text-headline-lg text-on-surface">6</span>
+<span class="font-body-md text-body-md text-on-surface-variant">Sessions</span>
+</div>
+<div class="mt-space-sm flex items-center gap-1 text-secondary font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[14px]">check_circle</span>
+<span>100% evaluated by AI</span>
+</div>
+</div>
+<!-- Metric 2: Average Score -->
+<div class="bg-surface-container-lowest p-space-lg rounded-DEFAULT shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface-variant">Average Score</span>
+<div class="w-9 h-9 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container">
+<span class="material-symbols-outlined text-[20px]">speed</span>
+</div>
+</div>
+<div class="mt-space-md flex items-baseline gap-space-xs">
+<span class="font-headline-lg text-headline-lg text-on-surface">84.5</span>
+<span class="font-body-md text-body-md text-on-surface-variant">/ 100</span>
+</div>
+<div class="mt-space-sm flex items-center gap-1 text-secondary font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[14px]">trending_up</span>
+<span>+12% over last 30 days</span>
+</div>
+</div>
+<!-- Metric 3: Highest Performance -->
+<div class="bg-surface-container-lowest p-space-lg rounded-DEFAULT shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface-variant">Highest Performance</span>
+<div class="w-9 h-9 rounded-full bg-tertiary-fixed flex items-center justify-center text-on-tertiary-fixed-variant">
+<span class="material-symbols-outlined text-[20px]">military_tech</span>
+</div>
+</div>
+<div class="mt-space-md flex items-baseline gap-space-xs">
+<span class="font-headline-lg text-headline-lg text-on-surface">92</span>
+<span class="font-body-md text-body-md text-on-surface-variant">/ 100</span>
+</div>
+<p class="mt-space-sm font-label-sm text-label-sm text-on-surface-variant truncate">
+              Staff Backend Engineer (Meta Track)
+            </p>
+</div>
+<!-- Metric 4: Practice Hours -->
+<div class="bg-surface-container-lowest p-space-lg rounded-DEFAULT shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface-variant">Practice Hours</span>
+<div class="w-9 h-9 rounded-full bg-surface-container-high flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[20px]">schedule</span>
+</div>
+</div>
+<div class="mt-space-md flex items-baseline gap-space-xs">
+<span class="font-headline-lg text-headline-lg text-on-surface">3.4</span>
+<span class="font-body-md text-body-md text-on-surface-variant">Hours Logged</span>
+</div>
+<div class="mt-space-sm flex items-center gap-1 text-on-surface-variant font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[14px]">timer</span>
+<span>Average session: 34m</span>
+</div>
+</div>
+</div>
+<!-- Trend Progression Inline Chart Card (5 Cols) -->
+<div class="lg:col-span-5 bg-surface-container-lowest p-space-lg rounded-DEFAULT shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-title-md text-title-md text-on-surface">Score Trajectory</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Progression across 6 simulation runs</span>
+</div>
+<div class="inline-flex items-center gap-1 font-label-sm text-label-sm px-space-sm py-0.5 rounded-full bg-secondary-fixed text-on-secondary-fixed">
+<span class="material-symbols-outlined text-[14px]">show_chart</span>
+<span>+16 pts Delta</span>
+</div>
+</div>
+<!-- Vector Area/Line Chart -->
+<div class="relative w-full h-36 my-2 flex items-end">
+<svg class="w-full h-full overflow-visible" preserveaspectratio="none" viewbox="0 0 320 120">
+<defs>
+<lineargradient id="scoreGradient" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="#005bbf" stop-opacity="0.28"></stop>
+<stop offset="100%" stop-color="#005bbf" stop-opacity="0.0"></stop>
+</lineargradient>
+</defs>
+<!-- Horizontal Guideline grids -->
+<line stroke="#dee3e9" stroke-dasharray="3 3" stroke-width="1" x1="0" x2="320" y1="15" y2="15"></line>
+<line stroke="#dee3e9" stroke-dasharray="3 3" stroke-width="1" x1="0" x2="320" y1="55" y2="55"></line>
+<line stroke="#dee3e9" stroke-dasharray="3 3" stroke-width="1" x1="0" x2="320" y1="95" y2="95"></line>
+<!-- Area Fill -->
+<path d="M 0,105 L 0,84 L 64,74 L 128,52 L 192,62 L 256,36 L 320,44 L 320,115 L 0,115 Z" fill="url(#scoreGradient)"></path>
+<!-- Main Stroke Line -->
+<path d="M 0,84 L 64,74 L 128,52 L 192,62 L 256,36 L 320,44" fill="none" stroke="#005bbf" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
+<!-- Data Node Circles -->
+<circle cx="0" cy="84" fill="#ffffff" r="3.5" stroke="#005bbf" stroke-width="2"></circle>
+<circle cx="64" cy="74" fill="#ffffff" r="3.5" stroke="#005bbf" stroke-width="2"></circle>
+<circle cx="128" cy="52" fill="#ffffff" r="3.5" stroke="#005bbf" stroke-width="2"></circle>
+<circle cx="192" cy="62" fill="#ffffff" r="3.5" stroke="#005bbf" stroke-width="2"></circle>
+<circle cx="256" cy="36" fill="#ffffff" r="3.5" stroke="#005bbf" stroke-width="2"></circle>
+<circle cx="320" cy="44" fill="#005bbf" r="4.5" stroke="#ffffff" stroke-width="2"></circle>
+</svg>
+</div>
+<!-- X-Axis Labels -->
+<div class="flex justify-between items-center text-on-surface-variant font-label-sm text-label-sm pt-space-xs">
+<span>S1 (72)</span>
+<span>S2 (76)</span>
+<span>S3 (84)</span>
+<span>S4 (79)</span>
+<span>S5 (91)</span>
+<span class="font-semibold text-primary">S6 (88)</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Active State Content Wrapper -->
+<div class="flex flex-col gap-space-lg" id="populatedState">
+<!-- Filter Bar, Rigor Chips & Sorting Controls -->
+<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-space-md">
+<!-- Search Input -->
+<div class="relative flex-1 min-w-[260px]">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[20px]">search</span>
+<input class="w-full bg-surface-container-low pl-10 pr-4 py-2.5 rounded-full font-body-md text-body-md text-on-surface placeholder:text-outline focus:outline-none focus:bg-surface-container-lowest focus:ring-2 focus:ring-primary transition-all" placeholder="Search by role, company, or skill..." type="text"/>
+</div>
+<!-- Filter Rigor Segment Chips -->
+<div class="flex items-center gap-space-xs overflow-x-auto pb-1 md:pb-0">
+<button class="rigor-filter-btn px-space-md py-1.5 rounded-full font-label-md text-label-md bg-primary-fixed text-on-primary-fixed-variant font-semibold transition-all shadow-sm" onclick="setRigorFilter(this)">
+            All Modes
+          </button>
+<button class="rigor-filter-btn px-space-md py-1.5 rounded-full font-label-md text-label-md text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-all" onclick="setRigorFilter(this)">
+            Standard
+          </button>
+<button class="rigor-filter-btn px-space-md py-1.5 rounded-full font-label-md text-label-md text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-all" onclick="setRigorFilter(this)">
+            Target Bar
+          </button>
+<button class="rigor-filter-btn px-space-md py-1.5 rounded-full font-label-md text-label-md text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-all" onclick="setRigorFilter(this)">
+            Stress Test
+          </button>
+</div>
+<!-- Sort Select -->
+<div class="flex items-center gap-space-xs self-end md:self-auto">
+<span class="material-symbols-outlined text-[18px] text-outline">sort</span>
+<select class="bg-surface-container-low text-on-surface font-label-md text-label-md px-space-md py-2 rounded-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary transition-all">
+<option>Newest First</option>
+<option>Highest Score</option>
+<option>Duration: Longest</option>
+<option>Duration: Shortest</option>
+</select>
+</div>
+</div>
+<!-- Past Sessions Card Stream -->
+<div class="flex flex-col gap-space-md">
+<!-- Record 1 (Latest - Oct 24) -->
+<div class="interview-card bg-surface-container-lowest rounded-DEFAULT p-space-lg shadow-sm hover:shadow-md transition-all flex flex-col lg:flex-row items-start lg:items-center justify-between gap-space-lg">
+<div class="flex items-start gap-space-md min-w-0">
+<!-- Select Checkbox for comparison -->
+<label class="relative flex items-center pt-1 cursor-pointer">
+<input class="compare-checkbox w-5 h-5 rounded-md accent-primary text-on-primary cursor-pointer" onchange="toggleCompareCheck(this)" type="checkbox"/>
+</label>
+<div class="w-12 h-12 rounded-xl bg-primary-fixed/60 flex items-center justify-center shrink-0 text-primary">
+<span class="material-symbols-outlined text-[26px]">terminal</span>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex flex-wrap items-center gap-space-xs mb-1">
+<h3 class="font-title-lg text-title-lg text-on-surface font-bold truncate">Senior Distributed Systems Engineer</h3>
+<span class="px-space-sm py-0.5 rounded-full font-label-sm text-label-sm bg-primary-fixed text-on-primary-fixed-variant font-medium">Target Bar</span>
+<span class="px-space-sm py-0.5 rounded-full font-label-sm text-label-sm bg-surface-container-high text-on-surface-variant font-medium">Stripe JD Ref</span>
+</div>
+<div class="flex flex-wrap items-center gap-space-md font-body-sm text-body-sm text-on-surface-variant">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">calendar_today</span>
+                  Oct 24, 2024
+                </span>
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">schedule</span>
+                  30 mins
+                </span>
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">record_voice_over</span>
+                  Voice + Code Sandbox
+                </span>
+</div>
+</div>
+</div>
+<div class="flex flex-wrap items-center gap-space-lg w-full lg:w-auto justify-between lg:justify-end">
+<!-- Score & Hireability Status -->
+<div class="flex items-center gap-space-md">
+<div class="flex flex-col text-right">
+<span class="font-headline-md text-headline-md font-bold text-primary">87<span class="text-on-surface-variant font-normal text-body-md">/100</span></span>
+<span class="font-label-sm text-label-sm text-secondary font-semibold">Strong Hire Verdict</span>
+</div>
+<!-- Mini Radial Score Visualizer -->
+<div class="relative w-11 h-11 flex items-center justify-center">
+<svg class="w-full h-full transform -rotate-90" viewbox="0 0 36 36">
+<path class="text-surface-container" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3.5"></path>
+<path class="text-primary" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="87, 100" stroke-linecap="round" stroke-width="3.5"></path>
+</svg>
+<span class="material-symbols-outlined text-[18px] text-primary absolute">verified</span>
+</div>
+</div>
+<!-- Action Cluster -->
+<div class="flex items-center gap-space-xs">
+<button class="p-2 rounded-full text-on-surface-variant hover:bg-surface-container hover:text-primary transition-colors" title="Read Full Transcript">
+<span class="material-symbols-outlined text-[20px]">description</span>
+</button>
+<button class="p-2 rounded-full text-on-surface-variant hover:bg-surface-container hover:text-primary transition-colors" title="Play Recording Playback">
+<span class="material-symbols-outlined text-[20px]">play_circle</span>
+</button>
+<a class="inline-flex items-center gap-1.5 px-space-md py-2 rounded-full bg-primary text-on-primary font-label-md text-label-md hover:bg-primary-container transition-all shadow-sm" data-path="evaluation-report" href="#">
+<span>View Full Report</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</a>
+</div>
+</div>
+</div>
+<!-- Record 2 (Stress Test - Oct 19) -->
+<div class="interview-card bg-surface-container-lowest rounded-DEFAULT p-space-lg shadow-sm hover:shadow-md transition-all flex flex-col lg:flex-row items-start lg:items-center justify-between gap-space-lg">
+<div class="flex items-start gap-space-md min-w-0">
+<label class="relative flex items-center pt-1 cursor-pointer">
+<input class="compare-checkbox w-5 h-5 rounded-md accent-primary text-on-primary cursor-pointer" onchange="toggleCompareCheck(this)" type="checkbox"/>
+</label>
+<div class="w-12 h-12 rounded-xl bg-tertiary-fixed/60 flex items-center justify-center shrink-0 text-tertiary">
+<span class="material-symbols-outlined text-[26px]">cloud</span>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex flex-wrap items-center gap-space-xs mb-1">
+<h3 class="font-title-lg text-title-lg text-on-surface font-bold truncate">Principal Cloud Architect</h3>
+<span class="px-space-sm py-0.5 rounded-full font-label-sm text-label-sm bg-tertiary-fixed text-on-tertiary-fixed-variant font-medium">Stress Test</span>
+<span class="px-space-sm py-0.5 rounded-full font-label-sm text-label-sm bg-surface-container-high text-on-surface-variant font-medium">Google Cloud JD</span>
+</div>
+<div class="flex flex-wrap items-center gap-space-md font-body-sm text-body-sm text-on-surface-variant">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">calendar_today</span>
+                  Oct 19, 2024
+                </span>
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">schedule</span>
+                  45 mins
+                </span>
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">psychology</span>
+                  Rapid Escalation Simulation
+                </span>
+</div>
+</div>
+</div>
+<div class="flex flex-wrap items-center gap-space-lg w-full lg:w-auto justify-between lg:justify-end">
+<div class="flex items-center gap-space-md">
+<div class="flex flex-col text-right">
+<span class="font-headline-md text-headline-md font-bold text-on-surface">79<span class="text-on-surface-variant font-normal text-body-md">/100</span></span>
+<span class="font-label-sm text-label-sm text-tertiary font-semibold">Lean Hire w/ Reservations</span>
+</div>
+<div class="relative w-11 h-11 flex items-center justify-center">
+<svg class="w-full h-full transform -rotate-90" viewbox="0 0 36 36">
+<path class="text-surface-container" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3.5"></path>
+<path class="text-tertiary" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="79, 100" stroke-linecap="round" stroke-width="3.5"></path>
+</svg>
+<span class="material-symbols-outlined text-[18px] text-tertiary absolute">report_problem</span>
+</div>
+</div>
+<div class="flex items-center gap-space-xs">
+<button class="p-2 rounded-full text-on-surface-variant hover:bg-surface-container hover:text-primary transition-colors" title="Read Full Transcript">
+<span class="material-symbols-outlined text-[20px]">description</span>
+</button>
+<button class="p-2 rounded-full text-on-surface-variant hover:bg-surface-container hover:text-primary transition-colors" title="Play Recording Playback">
+<span class="material-symbols-outlined text-[20px]">play_circle</span>
+</button>
+<a class="inline-flex items-center gap-1.5 px-space-md py-2 rounded-full bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container-highest transition-all" data-path="evaluation-report" href="#">
+<span>View Full Report</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</a>
+</div>
+</div>
+</div>
+<!-- Record 3 (Standard - Oct 12) -->
+<div class="interview-card bg-surface-container-lowest rounded-DEFAULT p-space-lg shadow-sm hover:shadow-md transition-all flex flex-col lg:flex-row items-start lg:items-center justify-between gap-space-lg">
+<div class="flex items-start gap-space-md min-w-0">
+<label class="relative flex items-center pt-1 cursor-pointer">
+<input class="compare-checkbox w-5 h-5 rounded-md accent-primary text-on-primary cursor-pointer" onchange="toggleCompareCheck(this)" type="checkbox"/>
+</label>
+<div class="w-12 h-12 rounded-xl bg-secondary-fixed/60 flex items-center justify-center shrink-0 text-secondary">
+<span class="material-symbols-outlined text-[26px]">dataset</span>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex flex-wrap items-center gap-space-xs mb-1">
+<h3 class="font-title-lg text-title-lg text-on-surface font-bold truncate">Full Stack Engineering Lead</h3>
+<span class="px-space-sm py-0.5 rounded-full font-label-sm text-label-sm bg-secondary-container text-on-secondary-container font-medium">Standard</span>
+<span class="px-space-sm py-0.5 rounded-full font-label-sm text-label-sm bg-surface-container-high text-on-surface-variant font-medium">Datadog JD</span>
+</div>
+<div class="flex flex-wrap items-center gap-space-md font-body-sm text-body-sm text-on-surface-variant">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">calendar_today</span>
+                  Oct 12, 2024
+                </span>
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">schedule</span>
+                  20 mins
+                </span>
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">architecture</span>
+                  Architecture Deep Dive
+                </span>
+</div>
+</div>
+</div>
+<div class="flex flex-wrap items-center gap-space-lg w-full lg:w-auto justify-between lg:justify-end">
+<div class="flex items-center gap-space-md">
+<div class="flex flex-col text-right">
+<span class="font-headline-md text-headline-md font-bold text-secondary">91<span class="text-on-surface-variant font-normal text-body-md">/100</span></span>
+<span class="font-label-sm text-label-sm text-secondary font-semibold">Exceptional Hire</span>
+</div>
+<div class="relative w-11 h-11 flex items-center justify-center">
+<svg class="w-full h-full transform -rotate-90" viewbox="0 0 36 36">
+<path class="text-surface-container" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3.5"></path>
+<path class="text-secondary" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="91, 100" stroke-linecap="round" stroke-width="3.5"></path>
+</svg>
+<span class="material-symbols-outlined text-[18px] text-secondary absolute">star</span>
+</div>
+</div>
+<div class="flex items-center gap-space-xs">
+<button class="p-2 rounded-full text-on-surface-variant hover:bg-surface-container hover:text-primary transition-colors" title="Read Full Transcript">
+<span class="material-symbols-outlined text-[20px]">description</span>
+</button>
+<button class="p-2 rounded-full text-on-surface-variant hover:bg-surface-container hover:text-primary transition-colors" title="Play Recording Playback">
+<span class="material-symbols-outlined text-[20px]">play_circle</span>
+</button>
+<a class="inline-flex items-center gap-1.5 px-space-md py-2 rounded-full bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container-highest transition-all" data-path="evaluation-report" href="#">
+<span>View Full Report</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</a>
+</div>
+</div>
+</div>
+<!-- Record 4 (Sep 28) -->
+<div class="interview-card bg-surface-container-lowest rounded-DEFAULT p-space-lg shadow-sm hover:shadow-md transition-all flex flex-col lg:flex-row items-start lg:items-center justify-between gap-space-lg">
+<div class="flex items-start gap-space-md min-w-0">
+<label class="relative flex items-center pt-1 cursor-pointer">
+<input class="compare-checkbox w-5 h-5 rounded-md accent-primary text-on-primary cursor-pointer" onchange="toggleCompareCheck(this)" type="checkbox"/>
+</label>
+<div class="w-12 h-12 rounded-xl bg-primary-fixed/60 flex items-center justify-center shrink-0 text-primary">
+<span class="material-symbols-outlined text-[26px]">groups</span>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex flex-wrap items-center gap-space-xs mb-1">
+<h3 class="font-title-lg text-title-lg text-on-surface font-bold truncate">Engineering Manager - Core Platform</h3>
+<span class="px-space-sm py-0.5 rounded-full font-label-sm text-label-sm bg-primary-fixed text-on-primary-fixed-variant font-medium">Target Bar</span>
+</div>
+<div class="flex flex-wrap items-center gap-space-md font-body-sm text-body-sm text-on-surface-variant">
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">calendar_today</span>
+                  Sep 28, 2024
+                </span>
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">schedule</span>
+                  30 mins
+                </span>
+<span class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">forum</span>
+                  Behavioral &amp; Conflict Management
+                </span>
+</div>
+</div>
+</div>
+<div class="flex flex-wrap items-center gap-space-lg w-full lg:w-auto justify-between lg:justify-end">
+<div class="flex items-center gap-space-md">
+<div class="flex flex-col text-right">
+<span class="font-headline-md text-headline-md font-bold text-on-surface">84<span class="text-on-surface-variant font-normal text-body-md">/100</span></span>
+<span class="font-label-sm text-label-sm text-primary font-semibold">Strong Hire Verdict</span>
+</div>
+<div class="relative w-11 h-11 flex items-center justify-center">
+<svg class="w-full h-full transform -rotate-90" viewbox="0 0 36 36">
+<path class="text-surface-container" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-width="3.5"></path>
+<path class="text-primary" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="84, 100" stroke-linecap="round" stroke-width="3.5"></path>
+</svg>
+<span class="material-symbols-outlined text-[18px] text-primary absolute">thumb_up</span>
+</div>
+</div>
+<div class="flex items-center gap-space-xs">
+<a class="inline-flex items-center gap-1.5 px-space-md py-2 rounded-full bg-surface-container-high text-on-surface font-label-md text-label-md hover:bg-surface-container-highest transition-all" data-path="evaluation-report" href="#">
+<span>View Full Report</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</a>
+</div>
+</div>
+</div>
+</div>
+<!-- Pagination / Footer Metadata -->
+<div class="flex items-center justify-between text-on-surface-variant font-label-md text-label-md pt-space-sm">
+<span>Showing 4 of 6 archived sessions</span>
+<div class="flex items-center gap-space-xs">
+<button class="p-1.5 rounded-full text-outline opacity-40 cursor-not-allowed" disabled="">
+<span class="material-symbols-outlined text-[20px]">chevron_left</span>
+</button>
+<span class="px-3 py-1 rounded-full bg-surface-container-high text-on-surface font-semibold">1</span>
+<button class="p-1.5 rounded-full hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-[20px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Empty State Representation View (Toggled via the top right switch button) -->
+<div class="hidden flex-col items-center justify-center p-space-xl bg-surface-container-lowest rounded-DEFAULT shadow-sm text-center py-20" id="emptyState">
+<div class="relative w-24 h-24 mb-space-md flex items-center justify-center">
+<div class="absolute inset-0 rounded-full bg-primary-fixed/40 animate-pulse"></div>
+<div class="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center text-primary relative z-10 shadow-sm">
+<span class="material-symbols-outlined text-[36px]">event_note</span>
+</div>
+</div>
+<h2 class="font-headline-md text-headline-md text-on-surface font-bold tracking-tight mb-space-xs">No interviews yet</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-md mx-auto mb-space-lg">
+        Start your first mock interview to calibrate your skills, generate reports, and track your progress over time.
+      </p>
+<div class="flex items-center gap-space-md">
+<a class="inline-flex items-center gap-space-xs px-space-xl py-3 rounded-full bg-primary text-on-primary font-label-lg text-label-lg hover:bg-primary-container transition-all shadow-md" data-path="new-interview" href="#">
+<span class="material-symbols-outlined text-[20px]">add</span>
+          Start First Mock Interview
+        </a>
+</div>
+</div>
+</div>
+<!-- Sticky Comparison Floating Drawer / Action Strip -->
+<aside class="hidden sticky bottom-4 z-40 max-w-4xl mx-auto w-[calc(100%-2rem)] bg-inverse-surface text-inverse-on-surface p-space-md rounded-xl shadow-xl transition-all duration-300" id="compareDrawer">
+<div class="flex flex-col sm:flex-row items-center justify-between gap-space-md">
+<div class="flex items-center gap-space-md">
+<div class="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-on-primary shrink-0">
+<span class="material-symbols-outlined text-[22px]">compare_arrows</span>
+</div>
+<div>
+<h4 class="font-title-md text-title-md font-semibold text-inverse-on-surface">Compare Sessions</h4>
+<p class="font-body-sm text-body-sm text-surface-variant" id="compareCountLabel">2 sessions selected. Ready to contrast rubric parameters side-by-side.</p>
+</div>
+</div>
+<div class="flex items-center gap-space-sm w-full sm:w-auto justify-end">
+<button class="px-space-md py-2 rounded-full font-label-md text-label-md text-inverse-on-surface/80 hover:bg-white/10 transition-colors" onclick="clearComparison()">
+          Clear
+        </button>
+<button class="px-space-lg py-2 rounded-full bg-primary-fixed text-on-primary-fixed-variant font-label-md text-label-md font-bold hover:bg-white transition-all shadow-sm" onclick="triggerCompareModal()">
+          Run Comparison
+        </button>
+</div>
+</div>
+</aside>
+<!-- Interactive Client Behavior Script -->
+<script>
+    function switchStateView(view) {
+      const populated = document.getElementById('populatedState');
+      const empty = document.getElementById('emptyState');
+      const analytics = document.getElementById('analyticsOverview');
+      const activeBtn = document.getElementById('viewActiveBtn');
+      const emptyBtn = document.getElementById('viewEmptyBtn');
+      const drawer = document.getElementById('compareDrawer');
+
+      if (view === 'empty') {
+        populated.classList.add('hidden');
+        populated.classList.remove('flex');
+        empty.classList.remove('hidden');
+        empty.classList.add('flex');
+        analytics.classList.add('opacity-40', 'pointer-events-none');
+        drawer.classList.add('hidden');
+
+        emptyBtn.className = "px-space-md py-1.5 rounded-full font-label-md text-label-md transition-all bg-surface-container-lowest text-primary shadow-sm font-semibold flex items-center gap-1.5";
+        activeBtn.className = "px-space-md py-1.5 rounded-full font-label-md text-label-md transition-all text-on-surface-variant hover:text-on-surface flex items-center gap-1.5";
+      } else {
+        empty.classList.add('hidden');
+        empty.classList.remove('flex');
+        populated.classList.remove('hidden');
+        populated.classList.add('flex');
+        analytics.classList.remove('opacity-40', 'pointer-events-none');
+
+        activeBtn.className = "px-space-md py-1.5 rounded-full font-label-md text-label-md transition-all bg-surface-container-lowest text-primary shadow-sm font-semibold flex items-center gap-1.5";
+        emptyBtn.className = "px-space-md py-1.5 rounded-full font-label-md text-label-md transition-all text-on-surface-variant hover:text-on-surface flex items-center gap-1.5";
+      }
+    }
+
+    function setRigorFilter(btn) {
+      document.querySelectorAll('.rigor-filter-btn').forEach(b => {
+        b.className = "rigor-filter-btn px-space-md py-1.5 rounded-full font-label-md text-label-md text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-all";
+      });
+      btn.className = "rigor-filter-btn px-space-md py-1.5 rounded-full font-label-md text-label-md bg-primary-fixed text-on-primary-fixed-variant font-semibold transition-all shadow-sm";
+    }
+
+    function toggleCompareCheck() {
+      const checkboxes = document.querySelectorAll('.compare-checkbox:checked');
+      const drawer = document.getElementById('compareDrawer');
+      const label = document.getElementById('compareCountLabel');
+
+      if (checkboxes.length >= 2) {
+        drawer.classList.remove('hidden');
+        label.textContent = `${checkboxes.length} sessions selected. Ready to contrast rubric parameters side-by-side.`;
+      } else if (checkboxes.length === 1) {
+        drawer.classList.remove('hidden');
+        label.textContent = "Select at least 1 more session to enable side-by-side analysis.";
+      } else {
+        drawer.classList.add('hidden');
+      }
+    }
+
+    function clearComparison() {
+      document.querySelectorAll('.compare-checkbox').forEach(c => c.checked = false);
+      document.getElementById('compareDrawer').classList.add('hidden');
+    }
+
+    function triggerCompareModal() {
+      alert("Side-by-side evaluation comparison modal initialized! Comparing Oct 24 (87/100) vs Oct 19 (79/100).");
+    }
+  </script>
+</div></main><footer class="w-full bg-surface-container-low py-space-lg shadow-[0_-1px_8px_rgba(0,0,0,0.02)]"><div class="max-w-7xl mx-auto px-gutter flex flex-col sm:flex-row items-center justify-between gap-space-md"><div class="flex items-center gap-space-sm"><span class="font-title-md text-title-md text-on-surface">InterviewMind</span><span class="font-body-sm text-body-sm text-on-surface-variant">© 2025 AI Career Intelligence. All rights reserved.</span></div><div class="flex items-center gap-space-md"><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors" href="#">Privacy Framework</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors" href="#">Interview Rubrics</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors" href="#">System Status</a></div></div></footer></body></html>

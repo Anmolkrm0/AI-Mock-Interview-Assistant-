@@ -1,0 +1,6 @@
+{
+  "name": "InterviewMind — AI-Powered Mock Interview Platform",
+  "description": "Practice job-specific mock interviews with realistic AI voice interviewers, live transcription, instant scorecards, and actionable answer rewrites.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
