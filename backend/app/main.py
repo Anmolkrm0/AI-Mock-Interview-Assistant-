@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.app.core.config import settings
 from backend.app.api.v1.health import router as health_router
+from backend.app.api.v1.documents import router as documents_router
+from backend.app.api.v1.roles import router as roles_router
+from backend.app.api.v1.interviews import router as interviews_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -23,6 +26,9 @@ if settings.BACKEND_CORS_ORIGINS:
 
 # Include v1 routers
 app.include_router(health_router, prefix=settings.API_V1_STR, tags=["Health"])
+app.include_router(documents_router, prefix=settings.API_V1_STR, tags=["Documents"])
+app.include_router(roles_router, prefix=settings.API_V1_STR, tags=["Roles"])
+app.include_router(interviews_router, prefix=settings.API_V1_STR, tags=["Interviews"])
 
 
 @app.get("/")
