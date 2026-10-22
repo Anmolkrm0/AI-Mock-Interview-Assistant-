@@ -106,8 +106,11 @@ npm run build
 
 ## 🚢 Deployment to Render
 
+This repository includes a native [`render.yaml`](render.yaml) blueprint specification for one-click full-stack deployment.
+
 Detailed instructions are available in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
+- **Render Blueprint**: Connect repository on Render -> Select **Blueprints** -> Render automatically detects `render.yaml` and deploys both backend and frontend.
 - **Backend**: Python Web Service running `uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT`
 - **Frontend**: Node Web Service running `npm ci && npm run build` and `npm start`
 - **Database**: Supabase PostgreSQL with Alembic migrations (`alembic upgrade head`)
