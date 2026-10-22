@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from backend.app.schemas.plan import InterviewPlanResponse
 
 
@@ -14,6 +14,8 @@ class InterviewCreateRequest(BaseModel):
 
 
 class InterviewResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     user_id: uuid.UUID
     resume_document_id: Optional[uuid.UUID] = None
@@ -31,8 +33,6 @@ class InterviewResponse(BaseModel):
     overall_score: Optional[int] = None
     has_recording: bool = False
 
-    class Config:
-        from_attributes = True
 
 
 class InterviewListResponse(BaseModel):

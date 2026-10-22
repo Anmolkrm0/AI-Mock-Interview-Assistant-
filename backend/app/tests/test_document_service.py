@@ -70,7 +70,8 @@ async def test_parse_resume_structured():
     profile = await parse_resume_with_ai(raw_text)
     assert "skills" in profile
     assert len(profile["skills"]) > 0
-    assert "Python" in profile["skills"] or "Distributed Systems" in profile["skills"]
+    assert "Python" in profile["skills"]
+    assert "Go" in profile["skills"]
 
 
 @pytest.mark.asyncio
@@ -80,3 +81,66 @@ async def test_parse_job_description_structured():
     assert "required_skills" in jd_parsed
     assert "competencies" in jd_parsed
     assert len(jd_parsed["competencies"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_extract_skills_comprehensive_taxonomy():
+    resume_text = """
+    Candidate Name
+    AI Technical Product Manager
+    TECHNICAL SKILLS & COMPETENCIES
+    • Languages & Frameworks: Python, TypeScript, React, Next.js, FastAPI, Node.js, PyTorch
+    • AI & Data: LLMs, LangChain, RAG, OpenAI API, Vector Databases (Pinecone, ChromaDB), Pandas, NumPy, Scikit-learn
+    • Cloud & Infrastructure: AWS (S3, Lambda, ECS), Docker, Kubernetes, CI/CD, GitHub Actions, Terraform
+    • Databases & Messaging: PostgreSQL, Redis, MongoDB, Apache Kafka
+    • Product Management: Product Roadmapping, PRDs, User Stories, A/B Testing, Feature Prioritization, Agile, Scrum, JIRA, Figma, OKRs
+    """
+    profile = await parse_resume_with_ai(resume_text)
+    extracted = profile["skills"]
+
+    # Verify all domains are extracted
+    assert "Python" in extracted
+    assert "React" in extracted
+    assert "FastAPI" in extracted
+    assert "PyTorch" in extracted
+    assert "LangChain" in extracted
+    assert "RAG" in extracted
+    assert "Pinecone" in extracted
+    assert "AWS" in extracted
+    assert "Docker" in extracted
+    assert "Kubernetes" in extracted
+    assert "CI/CD" in extracted
+    assert "PostgreSQL" in extracted
+    assert "Apache Kafka" in extracted
+    assert "Product Roadmapping" in extracted
+    assert "PRDs" in extracted
+    assert "A/B Testing" in extracted
+    assert "JIRA" in extracted
+    assert "Figma" in extracted
+    assert len(extracted) >= 20
+
+
+@pytest.mark.asyncio
+async def test_parse_job_description_ai_technical_pm():
+    jd_text = """
+    We are seeking a Senior AI Technical Product Manager to drive generative AI roadmaps,
+    author comprehensive PRDs, and partner with ML engineers and backend systems teams.
+    """
+    parsed = await parse_job_description_with_ai(jd_text, filename="JD_AI Technical PM.pdf")
+    assert "AI Technical Product Manager" in parsed["job_title"]
+    assert any("Roadmap" in comp or "Vision" in comp or "PRD" in comp for comp in parsed["competencies"])
+    assert "Product Roadmapping" in parsed["required_skills"] or "PRDs" in parsed["required_skills"]
+
+
+@pytest.mark.asyncio
+async def test_role_detection_service_ai_pm():
+    from backend.app.services.role_detection_service import detect_roles_from_job_description
+    res = await detect_roles_from_job_description(
+        "Drive product roadmaps for enterprise LLM systems. Collaborate on technical architecture.",
+        filename="JD_AI Technical PM.pdf",
+    )
+    assert "detected_roles" in res
+    assert len(res["detected_roles"]) >= 1
+    assert "AI Technical Product Manager" in res["primary_role"]
+    assert res["detected_roles"][0]["confidence"] >= 0.85
+

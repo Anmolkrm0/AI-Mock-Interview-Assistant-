@@ -12,5 +12,9 @@ async def detect_roles(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     """Detect plausible candidate roles from job description text."""
-    result = await detect_roles_from_job_description(payload.job_description_text)
+    result = await detect_roles_from_job_description(
+        payload.job_description_text,
+        filename=payload.filename or "",
+    )
     return result
+

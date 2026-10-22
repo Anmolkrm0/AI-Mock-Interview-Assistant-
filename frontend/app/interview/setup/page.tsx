@@ -34,20 +34,22 @@ export default function InterviewSetupPage() {
   const [resumeError, setResumeError] = useState<string | null>(null);
 
   // Step B: Job Description state
-  const [jdTab, setJdTab] = useState<"paste" | "upload">("paste");
+  const [jdTab, setJdTab] = useState<"paste" | "upload">("upload");
   const [jdText, setJdText] = useState("");
   const [jdFile, setJdFile] = useState<File | null>(null);
   const [jdDocId, setJdDocId] = useState<string | null>(null);
+  const [parsedJd, setParsedJd] = useState<any>(null);
   const [jdUploading, setJdUploading] = useState(false);
   const [jdError, setJdError] = useState<string | null>(null);
 
   // Step D: Role Selection state
   const [detectedRoles, setDetectedRoles] = useState<string[]>([
+    "Senior AI Technical Product Manager",
+    "Staff Technical Product Manager",
     "Senior Distributed Systems Engineer",
-    "Staff Platform Engineer",
     "Full-Stack Software Engineer",
   ]);
-  const [selectedRole, setSelectedRole] = useState("Senior Distributed Systems Engineer");
+  const [selectedRole, setSelectedRole] = useState("Senior AI Technical Product Manager");
   const [isDetectingRoles, setIsDetectingRoles] = useState(false);
 
   // Step E & F: Duration & Rigor
@@ -58,6 +60,56 @@ export default function InterviewSetupPage() {
   const [consentGiven, setConsentGiven] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+
+  // Core JD processing routine
+  const processJobDescription = async (fileToUpload?: File | null, textToUpload?: string) => {
+    setJdError(null);
+    setJdUploading(true);
+    setIsDetectingRoles(true);
+
+    try {
+      const activeFile = fileToUpload !== undefined ? fileToUpload : (jdTab === "upload" ? jdFile : null);
+      const activeText = textToUpload !== undefined ? textToUpload : (jdTab === "paste" ? jdText : "");
+
+      const jdResult = await uploadJobDescriptionApi({
+        file: activeFile || undefined,
+        textContent: activeFile ? undefined : (activeText.trim() || undefined),
+      });
+
+      setJdDocId(jdResult.id);
+      if (jdResult.extracted_data) {
+        setParsedJd(jdResult.extracted_data);
+        if (jdResult.extracted_data.job_title) {
+          setSelectedRole(jdResult.extracted_data.job_title);
+        }
+      }
+
+      // Build content for role detection
+      let content = activeText.trim() || jdResult.extracted_text || "";
+      if (!content && jdResult.extracted_data) {
+        content = `${jdResult.extracted_data.job_title || ""} ${jdResult.extracted_data.responsibilities?.join(" ") || ""} ${jdResult.extracted_data.required_skills?.join(" ") || ""}`;
+      }
+      if (!content && activeFile) {
+        content = activeFile.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
+      }
+      if (!content || content.trim().length < 5) {
+        content = activeFile?.name || "AI Technical Product Manager";
+      }
+
+      const rolesRes = await detectRolesApi(content.trim(), activeFile?.name);
+      if (rolesRes.detected_roles && rolesRes.detected_roles.length > 0) {
+        const roleTitles = rolesRes.detected_roles.map((r: any) => r.title);
+        setDetectedRoles(roleTitles);
+        setSelectedRole(rolesRes.primary_role || roleTitles[0]);
+      }
+    } catch (err: any) {
+      const msg = typeof err === "string" ? err : err.message || "Failed to analyze job description.";
+      setJdError(msg);
+    } finally {
+      setJdUploading(false);
+      setIsDetectingRoles(false);
+    }
+  };
 
   // Handlers
   const handleResumeSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -81,6 +133,16 @@ export default function InterviewSetupPage() {
       const result = await uploadResumeApi(file);
       setResumeDocId(result.id);
       setParsedCandidate(result.extracted_data);
+
+      // If user hasn't uploaded a JD yet, infer target role from candidate profile
+      if (!jdDocId && result.extracted_data?.skills?.length > 0) {
+        const skillsText = result.extracted_data.skills.join(" ").toLowerCase();
+        if (skillsText.includes("product") || skillsText.includes("prd") || skillsText.includes("roadmapping")) {
+          setSelectedRole("Senior AI Technical Product Manager");
+        } else if (skillsText.includes("kafka") || skillsText.includes("distributed")) {
+          setSelectedRole("Senior Distributed Systems Engineer");
+        }
+      }
     } catch (err: any) {
       setResumeError(err.message || "Failed to parse resume.");
     } finally {
@@ -88,51 +150,35 @@ export default function InterviewSetupPage() {
     }
   };
 
+  const handleJdFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith(".pdf") && !file.name.endsWith(".docx")) {
+      setJdError("Only .pdf and .docx files are supported.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setJdError("File size exceeds 10MB limit.");
+      return;
+    }
+
+    setJdFile(file);
+    await processJobDescription(file, undefined);
+  };
+
   const handleJdAnalyze = async () => {
-    setJdError(null);
-    if (jdTab === "paste" && jdText.trim().length < 30) {
-      setJdError("Please paste at least 30 characters of the job description.");
+    if (jdTab === "paste" && jdText.trim().length < 20) {
+      setJdError("Please paste at least 20 characters of the job description.");
       return;
     }
     if (jdTab === "upload" && !jdFile) {
       setJdError("Please select a job description file.");
       return;
     }
-
-    setJdUploading(true);
-    setIsDetectingRoles(true);
-
-    try {
-      const jdResult = await uploadJobDescriptionApi({
-        file: jdTab === "upload" ? jdFile || undefined : undefined,
-        textContent: jdTab === "paste" ? jdText : undefined,
-      });
-      setJdDocId(jdResult.id);
-
-      let content = jdTab === "paste" ? jdText : (jdResult.extracted_text || "");
-      if (!content && jdResult.extracted_data) {
-        content = `${jdResult.extracted_data.job_title || ""} ${jdResult.extracted_data.responsibilities?.join(" ") || ""} ${jdResult.extracted_data.required_skills?.join(" ") || ""}`;
-      }
-      if (!content && jdFile) {
-        content = jdFile.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
-      }
-      if (!content || content.trim().length < 5) {
-        content = "Technical Product Manager AI Software Engineer";
-      }
-
-      const rolesRes = await detectRolesApi(content.trim());
-      if (rolesRes.detected_roles && rolesRes.detected_roles.length > 0) {
-        setDetectedRoles(rolesRes.detected_roles.map((r: any) => r.title));
-        setSelectedRole(rolesRes.primary_role || rolesRes.detected_roles[0].title);
-      }
-    } catch (err: any) {
-      const msg = typeof err === "string" ? err : err.message || "Failed to analyze job description.";
-      setJdError(msg);
-    } finally {
-      setJdUploading(false);
-      setIsDetectingRoles(false);
-    }
+    await processJobDescription();
   };
+
 
   const handleStartInterview = async () => {
     setStartError(null);
@@ -285,10 +331,23 @@ export default function InterviewSetupPage() {
 
             {parsedCandidate && (
               <div className="mt-4 p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs">
-                <p className="font-semibold text-slate-800">Parsed Skills:</p>
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {parsedCandidate.skills?.slice(0, 10).map((skill: string, idx: number) => (
-                    <span key={idx} className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-700 font-medium">
+                <div className="flex items-center justify-between mb-2.5">
+                  <p className="font-semibold text-slate-900 flex items-center gap-1.5">
+                    <span>Parsed Candidate Skills</span>
+                    <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-bold text-[11px]">
+                      {parsedCandidate.skills?.length || 0}
+                    </span>
+                  </p>
+                  <span className="text-[11px] text-slate-500 font-normal">
+                    Extracted from candidate profile
+                  </span>
+                </div>
+                <div className="max-h-52 overflow-y-auto pr-1 flex flex-wrap gap-1.5 scrollbar-thin">
+                  {parsedCandidate.skills?.map((skill: string, idx: number) => (
+                    <span
+                      key={idx}
+                      className="px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-800 font-medium shadow-2xs hover:border-blue-400 hover:text-blue-700 transition-colors"
+                    >
                       {skill}
                     </span>
                   ))}
@@ -311,6 +370,11 @@ export default function InterviewSetupPage() {
                   Paste text or upload a job specification to extract expected competencies.
                 </p>
               </div>
+              {parsedJd && (
+                <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> JD Analyzed
+                </span>
+              )}
             </div>
 
             {jdError && (
@@ -323,17 +387,6 @@ export default function InterviewSetupPage() {
             <div className="flex border-b border-slate-200 mb-4">
               <button
                 type="button"
-                onClick={() => setJdTab("paste")}
-                className={`pb-2 px-4 text-xs font-semibold border-b-2 transition-colors ${
-                  jdTab === "paste"
-                    ? "border-blue-600 text-blue-600"
-                    : "border-transparent text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                Paste Text
-              </button>
-              <button
-                type="button"
                 onClick={() => setJdTab("upload")}
                 className={`pb-2 px-4 text-xs font-semibold border-b-2 transition-colors ${
                   jdTab === "upload"
@@ -342,6 +395,17 @@ export default function InterviewSetupPage() {
                 }`}
               >
                 Upload File (PDF/DOCX)
+              </button>
+              <button
+                type="button"
+                onClick={() => setJdTab("paste")}
+                className={`pb-2 px-4 text-xs font-semibold border-b-2 transition-colors ${
+                  jdTab === "paste"
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                Paste Text
               </button>
             </div>
 
@@ -357,18 +421,83 @@ export default function InterviewSetupPage() {
               </div>
             ) : (
               <div>
-                <label className="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer bg-slate-50">
-                  <Upload className="w-6 h-6 text-slate-400 mb-1" />
-                  <span className="text-xs font-semibold text-slate-700">
-                    {jdFile ? jdFile.name : "Select Job Description Document"}
+                {!jdFile ? (
+                  <label className="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer bg-slate-50 hover:bg-blue-50/20 transition-all">
+                    <Upload className="w-6 h-6 text-slate-400 mb-1" />
+                    <span className="text-xs font-semibold text-slate-700">
+                      Select or drop Job Description Document (PDF/DOCX)
+                    </span>
+                    <span className="text-[11px] text-slate-400 mt-0.5">
+                      Auto-detects role, seniority, and required competencies
+                    </span>
+                    <input
+                      type="file"
+                      accept=".pdf,.docx"
+                      onChange={handleJdFileSelect}
+                      className="hidden"
+                    />
+                  </label>
+                ) : (
+                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{jdFile.name}</p>
+                        <p className="text-xs text-slate-500">{(jdFile.size / (1024 * 1024)).toFixed(2)} MB</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {jdUploading || isDetectingRoles ? (
+                        <span className="text-xs text-blue-600 flex items-center gap-1.5 font-medium">
+                          <Loader2 className="w-4 h-4 animate-spin" /> Analyzing JD &amp; Roles...
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setJdFile(null);
+                            setJdDocId(null);
+                            setParsedJd(null);
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {parsedJd && (
+              <div className="mt-4 p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-600 font-medium">Extracted Role:</span>
+                    <span className="font-bold text-blue-700 bg-blue-100/70 px-2.5 py-0.5 rounded-md border border-blue-200">
+                      {parsedJd.job_title}
+                    </span>
+                  </div>
+                  <span className="text-slate-500 font-medium">
+                    Seniority: <strong className="text-slate-700">{parsedJd.seniority || "Senior"}</strong>
                   </span>
-                  <input
-                    type="file"
-                    accept=".pdf,.docx"
-                    onChange={(e) => setJdFile(e.target.files?.[0] || null)}
-                    className="hidden"
-                  />
-                </label>
+                </div>
+
+                {parsedJd.required_skills && parsedJd.required_skills.length > 0 && (
+                  <div>
+                    <p className="text-slate-600 font-medium mb-1">Required Competencies &amp; Skills:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {parsedJd.required_skills.map((s: string, idx: number) => (
+                        <span key={idx} className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700 font-medium">
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -387,12 +516,13 @@ export default function InterviewSetupPage() {
                 ) : (
                   <>
                     <Sparkles className="w-3.5 h-3.5" />
-                    Extract Role Competencies
+                    {parsedJd ? "Re-Extract Role Competencies" : "Extract Role Competencies"}
                   </>
                 )}
               </button>
             </div>
           </section>
+
 
           {/* STEP D: Target Job Role */}
           <section className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm">

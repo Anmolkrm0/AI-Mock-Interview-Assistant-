@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -11,8 +11,10 @@ class DetectedRole(BaseModel):
 
 class RoleDetectionRequest(BaseModel):
     job_description_text: str = Field(..., min_length=1, description="Job description text")
+    filename: Optional[str] = Field(None, description="Optional original filename to boost detection fidelity")
 
 
 class RoleDetectionResponse(BaseModel):
-    detected_roles: List[DetectedRole] = Field(..., min_items=1)
+    detected_roles: List[DetectedRole] = Field(..., min_length=1)
     primary_role: str = Field(..., description="Default selected role")
+

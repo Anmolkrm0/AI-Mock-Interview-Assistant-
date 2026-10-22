@@ -39,7 +39,7 @@ async def upload_resume(
     extracted_text, doc_format = extract_document_text(file_bytes, file.filename or "resume.pdf")
 
     # Structured parsing
-    parsed_data = await parse_resume_with_ai(extracted_text)
+    parsed_data = await parse_resume_with_ai(extracted_text, filename=file.filename or "resume.pdf")
 
     doc = Document(
         user_id=current_user.id,
@@ -81,7 +81,8 @@ async def upload_job_description(
             detail="Please provide a valid job description document or paste at least 20 characters of text.",
         )
 
-    parsed_data = await parse_job_description_with_ai(extracted_text)
+    parsed_data = await parse_job_description_with_ai(extracted_text, filename=filename)
+
 
     doc = Document(
         user_id=current_user.id,

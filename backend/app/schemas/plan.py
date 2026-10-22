@@ -24,6 +24,7 @@ class InterviewPlanRequest(BaseModel):
 
 class InterviewPlanResponse(BaseModel):
     interview_objectives: List[str] = Field(default_factory=list)
-    questions: List[PlannedQuestion] = Field(..., min_items=2)
+    questions: List[PlannedQuestion] = Field(..., min_length=2)
     total_estimated_minutes: int
     competency_weights: Dict[str, float] = Field(default_factory=dict)
+

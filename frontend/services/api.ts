@@ -126,12 +126,15 @@ export async function uploadJobDescriptionApi(params: { file?: File; textContent
   return res.json();
 }
 
-export async function detectRolesApi(jobDescriptionText: string) {
+export async function detectRolesApi(jobDescriptionText: string, filename?: string) {
   const headers = await getAuthHeaders();
   const res = await fetch(`${API_BASE}/roles/detect`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ job_description_text: jobDescriptionText }),
+    body: JSON.stringify({
+      job_description_text: jobDescriptionText,
+      filename: filename || undefined,
+    }),
   });
 
   if (!res.ok) {
@@ -140,6 +143,7 @@ export async function detectRolesApi(jobDescriptionText: string) {
   }
   return res.json();
 }
+
 
 export async function createInterviewApi(params: {
   resume_document_id?: string;
