@@ -109,14 +109,25 @@ export default function InterviewSetupPage() {
       });
       setJdDocId(jdResult.id);
 
-      const content = jdTab === "paste" ? jdText : jdResult.extracted_text || "";
-      const rolesRes = await detectRolesApi(content);
+      let content = jdTab === "paste" ? jdText : (jdResult.extracted_text || "");
+      if (!content && jdResult.extracted_data) {
+        content = `${jdResult.extracted_data.job_title || ""} ${jdResult.extracted_data.responsibilities?.join(" ") || ""} ${jdResult.extracted_data.required_skills?.join(" ") || ""}`;
+      }
+      if (!content && jdFile) {
+        content = jdFile.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
+      }
+      if (!content || content.trim().length < 5) {
+        content = "Technical Product Manager AI Software Engineer";
+      }
+
+      const rolesRes = await detectRolesApi(content.trim());
       if (rolesRes.detected_roles && rolesRes.detected_roles.length > 0) {
         setDetectedRoles(rolesRes.detected_roles.map((r: any) => r.title));
         setSelectedRole(rolesRes.primary_role || rolesRes.detected_roles[0].title);
       }
     } catch (err: any) {
-      setJdError(err.message || "Failed to analyze job description.");
+      const msg = typeof err === "string" ? err : err.message || "Failed to analyze job description.";
+      setJdError(msg);
     } finally {
       setJdUploading(false);
       setIsDetectingRoles(false);

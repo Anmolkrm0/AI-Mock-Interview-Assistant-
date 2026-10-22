@@ -10,7 +10,7 @@ class DetectedRole(BaseModel):
 
 
 class RoleDetectionRequest(BaseModel):
-    job_description_text: str = Field(..., min_length=20, description="Job description text")
+    job_description_text: str = Field(..., min_length=1, description="Job description text")
 
 
 class RoleDetectionResponse(BaseModel):

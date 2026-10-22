@@ -43,7 +43,9 @@ Job Description:
         seniority = "Junior"
 
     detected_title = "Full-Stack Software Engineer"
-    if "distributed" in text_lower or "systems engineer" in text_lower:
+    if "product manager" in text_lower or "technical pm" in text_lower or "tpm" in text_lower or "product management" in text_lower or "ai technical pm" in text_lower:
+        detected_title = f"{seniority} AI Technical Product Manager"
+    elif "distributed" in text_lower or "systems engineer" in text_lower:
         detected_title = f"{seniority} Distributed Systems Engineer"
     elif "backend" in text_lower:
         detected_title = f"{seniority} Backend Engineer"

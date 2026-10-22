@@ -16,6 +16,16 @@ export async function getAuthToken(): Promise<string | undefined> {
   return undefined;
 }
 
+function formatApiError(errorData: any, fallback: string): string {
+  if (!errorData) return fallback;
+  if (typeof errorData.detail === "string") return errorData.detail;
+  if (Array.isArray(errorData.detail)) {
+    return errorData.detail.map((e: any) => e.msg || e.detail || JSON.stringify(e)).join(", ");
+  }
+  if (errorData.message && typeof errorData.message === "string") return errorData.message;
+  return fallback;
+}
+
 export async function getAuthHeaders(): Promise<HeadersInit> {
   const token = await getAuthToken();
   const headers: HeadersInit = {
@@ -82,7 +92,7 @@ export async function uploadResumeApi(file: File) {
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.detail || "Failed to upload and parse resume.");
+    throw new Error(formatApiError(errorData, "Failed to upload and parse resume."));
   }
   return res.json();
 }
@@ -111,7 +121,7 @@ export async function uploadJobDescriptionApi(params: { file?: File; textContent
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.detail || "Failed to process job description.");
+    throw new Error(formatApiError(errorData, "Failed to process job description."));
   }
   return res.json();
 }
@@ -126,7 +136,7 @@ export async function detectRolesApi(jobDescriptionText: string) {
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.detail || "Failed to detect roles.");
+    throw new Error(formatApiError(errorData, "Failed to detect roles."));
   }
   return res.json();
 }
