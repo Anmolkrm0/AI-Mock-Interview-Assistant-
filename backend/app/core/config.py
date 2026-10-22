@@ -32,8 +32,8 @@ class Settings(BaseSettings):
             return v
         raise ValueError(v)
 
-    # Database (Supabase PostgreSQL / local PostgreSQL)
-    DATABASE_URL: str = "postgresql+psycopg://postgres:postgres@localhost:5432/mock_interview"
+    # Database (Supabase PostgreSQL / local PostgreSQL / SQLite fallback)
+    DATABASE_URL: str = "sqlite:///./dev.db"
 
     # Supabase Credentials
     SUPABASE_URL: str = ""

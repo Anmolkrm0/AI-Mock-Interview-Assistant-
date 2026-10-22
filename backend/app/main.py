@@ -37,6 +37,16 @@ app.include_router(recordings_router, prefix=settings.API_V1_STR, tags=["Recordi
 app.include_router(reports_router, prefix=settings.API_V1_STR, tags=["Reports & Feedback"])
 
 
+@app.on_event("startup")
+def on_startup():
+    from backend.app.models.models import Base
+    from backend.app.core.database import engine
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        print(f"Startup table creation warning: {e}")
+
+
 @app.get("/")
 def root():
     return {

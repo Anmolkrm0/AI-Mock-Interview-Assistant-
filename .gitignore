@@ -48,5 +48,6 @@ htmlcov/
 
 # Database & OS
 *.sqlite3
+*.db
 .DS_Store
 Thumbs.db
