@@ -334,17 +334,62 @@ def extract_jd_details(raw_text: str, filename: str = "") -> Dict[str, Any]:
     combined = f"{filename} {raw_text}".strip()
     text_lower = combined.lower()
 
-    # Seniority detection
+    # 1. Seniority detection
     seniority = "Senior"
-    if any(w in text_lower for w in ["lead", "principal", "staff", "director", "head of", "vp"]):
+    if any(w in text_lower for w in ["lead", "principal", "staff", "director", "head of", "vp", "chief"]):
         seniority = "Staff"
     elif any(w in text_lower for w in ["junior", "associate", "entry", "intern"]):
         seniority = "Junior"
 
-    # Role matching
-    if any(k in text_lower for k in ["ai technical pm", "technical pm", "ai tpm", "technical product manager", "product manager", "product owner", "product management", "tpm"]):
-        if "ai" in text_lower or "machine learning" in text_lower or "llm" in text_lower or "generative" in text_lower:
-            job_title = f"{seniority} AI Technical Product Manager"
+    # 2. Check for explicit job title labels in text or filename
+    explicit_title = None
+    title_match = re.search(
+        r"(?:job\s*title|job\s*role|position|role|title)\s*[:\-–]\s*([A-Za-z0-9\s\/\-_()&+]+)",
+        raw_text,
+        re.IGNORECASE,
+    )
+    if title_match:
+        candidate_t = title_match.group(1).strip().split("\n")[0].strip()
+        candidate_t = re.sub(r"[,;].*$", "", candidate_t).strip()
+        candidate_t = re.sub(r"^(?:an?|the)\s+", "", candidate_t, flags=re.IGNORECASE).strip()
+        if 3 <= len(candidate_t) <= 60 and not any(w in candidate_t.lower() for w in ["description", "overview", "summary", "about us", "location", "salary"]):
+            candidate_t = re.sub(r"\bTPM\b", "Technical Product Manager", candidate_t, flags=re.IGNORECASE)
+            candidate_t = re.sub(r"\bPM\b", "Product Manager", candidate_t, flags=re.IGNORECASE)
+            candidate_t = re.sub(r"\bSRE\b", "Site Reliability Engineer", candidate_t, flags=re.IGNORECASE)
+            explicit_title = candidate_t.strip()
+
+    if not explicit_title:
+        hiring_match = re.search(
+            r"(?:we(?:'re|\s+are)\s+(?:hiring|looking\s+for|seeking)|seeking\s+an?|hiring\s+an?)\s+([A-Za-z0-9\s\/\-_()&+]+?)(?:\s+to|\s+who|\s+for|\.|\n|,|;)",
+            raw_text,
+            re.IGNORECASE,
+        )
+        if hiring_match:
+            candidate_t = hiring_match.group(1).strip()
+            candidate_t = re.sub(r"^(?:an?|the)\s+", "", candidate_t, flags=re.IGNORECASE).strip()
+            if 3 <= len(candidate_t) <= 60 and any(w in candidate_t.lower() for w in ["engineer", "developer", "manager", "architect", "lead", "specialist", "scientist", "analyst", "director", "pm", "tpm", "sre", "devops"]):
+                candidate_t = re.sub(r"\bTPM\b", "Technical Product Manager", candidate_t, flags=re.IGNORECASE)
+                candidate_t = re.sub(r"\bPM\b", "Product Manager", candidate_t, flags=re.IGNORECASE)
+                candidate_t = re.sub(r"\bSRE\b", "Site Reliability Engineer", candidate_t, flags=re.IGNORECASE)
+                explicit_title = candidate_t.strip()
+
+    if not explicit_title and filename:
+        clean_fname = re.sub(r"\.(pdf|docx|txt)$", "", filename, flags=re.IGNORECASE)
+        clean_fname = re.sub(r"[_\-]+", " ", clean_fname)
+        clean_fname = re.sub(r"(?i)\b(jd|job\s*description|resume|cv|posting|specification)\b", "", clean_fname).strip()
+        clean_fname = re.sub(r"^(?:an?|the)\s+", "", clean_fname, flags=re.IGNORECASE).strip()
+        if 3 <= len(clean_fname) <= 60 and any(w in clean_fname.lower() for w in ["engineer", "developer", "manager", "architect", "lead", "specialist", "scientist", "analyst", "director", "pm", "tpm", "sre", "devops"]):
+            clean_fname = re.sub(r"\bTPM\b", "Technical Product Manager", clean_fname, flags=re.IGNORECASE)
+            clean_fname = re.sub(r"\bPM\b", "Product Manager", clean_fname, flags=re.IGNORECASE)
+            clean_fname = re.sub(r"\bSRE\b", "Site Reliability Engineer", clean_fname, flags=re.IGNORECASE)
+            explicit_title = clean_fname.strip()
+
+    # 3. Dynamic role categorization & competency profiling
+    domain_search = f"{explicit_title or ''} {text_lower}".lower()
+
+    if any(k in domain_search for k in ["ai technical pm", "technical pm", "ai tpm", "technical product manager", "product manager", "product owner", "product management", "tpm"]):
+        if any(ai_k in domain_search for ai_k in ["ai", "machine learning", "ml", "llm", "generative"]):
+            job_title = explicit_title or f"{seniority} AI Technical Product Manager"
             competencies = [
                 "AI Product Vision & Strategy",
                 "Technical Architecture & LLM Systems",
@@ -361,12 +406,12 @@ def extract_jd_details(raw_text: str, filename: str = "") -> Dict[str, Any]:
             ]
             required_skills = ["Product Roadmapping", "PRDs", "AI / LLM Product Strategy", "Cross-Functional Leadership", "Agile / Scrum", "Technical Architecture", "System Design", "A/B Testing"]
         else:
-            job_title = f"{seniority} Technical Product Manager"
+            job_title = explicit_title or f"{seniority} Technical Product Manager"
             competencies = [
                 "Technical Product Strategy",
                 "Architecture & Engineering Collaboration",
                 "PRD Authoring & Requirements Definition",
-                "Agile Delivery & Prioritization",
+                "Roadmapping & Prioritization",
                 "Stakeholder Management",
             ]
             responsibilities = [
@@ -376,7 +421,102 @@ def extract_jd_details(raw_text: str, filename: str = "") -> Dict[str, Any]:
                 "Manage release timelines, backlog grooming, and agile execution.",
             ]
             required_skills = ["Technical Product Management", "Product Roadmapping", "PRDs", "Agile", "Scrum", "JIRA", "System Design"]
-    elif any(k in text_lower for k in ["machine learning", "ai engineer", "deep learning", "llm engineer", "nlp engineer"]):
+    elif any(k in domain_search for k in ["devops", "sre", "site reliability", "platform engineer", "infrastructure engineer"]):
+        job_title = explicit_title or f"{seniority} DevOps / Site Reliability Engineer"
+        competencies = [
+            "Infrastructure as Code & Cloud Automation",
+            "CI/CD Pipelines & Deployment Reliability",
+            "Container Orchestration (Kubernetes/Docker)",
+            "System Observability, SLOs & Incident Response",
+            "Cloud Security & High Availability",
+        ]
+        responsibilities = [
+            "Architect and maintain scalable cloud infrastructure across AWS, GCP, or Azure.",
+            "Design automated CI/CD pipelines, GitOps workflows, and deployment rollback automation.",
+            "Manage Kubernetes clusters, multi-region ingress, and container security.",
+            "Define SLOs, SLIs, and error budgets; drive post-mortem analysis and production resilience.",
+        ]
+        required_skills = ["Kubernetes", "Docker", "Terraform", "CI/CD", "AWS", "Linux", "Prometheus", "Grafana", "Python", "Bash"]
+    elif any(k in text_lower for k in ["data engineer", "data platform", "etl engineer", "big data"]):
+        job_title = f"{seniority} Data Engineer"
+        competencies = [
+            "Data Pipeline Architecture & Stream Processing",
+            "Data Warehousing & Dimensional Modeling",
+            "Batch & Real-time ETL Automation",
+            "Query Optimization & Scalability",
+        ]
+        responsibilities = [
+            "Design and build reliable batch and real-time streaming data pipelines.",
+            "Architect scalable data warehouses in Snowflake, BigQuery, or Redshift.",
+            "Optimize large-scale SQL transformations, partition pruning, and schema evolutions.",
+        ]
+        required_skills = ["Python", "SQL", "Apache Spark", "Apache Kafka", "PostgreSQL", "Snowflake", "dbt", "Airflow"]
+    elif any(k in text_lower for k in ["data scientist", "data science", "nlp engineer"]):
+        job_title = f"{seniority} Data Scientist"
+        competencies = [
+            "Statistical Modeling & Hypothesis Testing",
+            "Machine Learning Algorithms & Predictive Analytics",
+            "Feature Engineering & Exploratory Data Analysis",
+            "Model Evaluation, Validation & Business Impact",
+        ]
+        responsibilities = [
+            "Develop predictive machine learning models to solve complex business problems.",
+            "Conduct rigorous statistical experiments, A/B tests, and metric evaluations.",
+            "Communicate data-driven insights and model findings to executive stakeholders.",
+        ]
+        required_skills = ["Python", "R", "SQL", "Scikit-Learn", "Pandas", "NumPy", "Statistics", "A/B Testing"]
+    elif any(k in text_lower for k in ["ios", "swift", "apple developer"]):
+        job_title = f"{seniority} iOS Engineer"
+        competencies = [
+            "iOS SDK & Swift Architecture",
+            "Memory Management & UI Performance",
+            "Modern UI with SwiftUI and UIKit",
+            "Offline Storage, Networking & Core Data",
+        ]
+        responsibilities = [
+            "Build high-performance, intuitive iOS applications using Swift and SwiftUI.",
+            "Optimize rendering performance, memory leaks, and network consumption.",
+        ]
+        required_skills = ["Swift", "SwiftUI", "UIKit", "iOS", "Xcode", "REST APIs", "Git"]
+    elif any(k in text_lower for k in ["android", "kotlin"]):
+        job_title = f"{seniority} Android Engineer"
+        competencies = [
+            "Android SDK & Kotlin Coroutines",
+            "Jetpack Compose & Modern Architecture",
+            "Lifecycle Management & Asynchronous Tasks",
+        ]
+        responsibilities = [
+            "Develop robust Android mobile applications using Kotlin and Jetpack Compose.",
+            "Design offline-first mobile sync architectures and background workers.",
+        ]
+        required_skills = ["Kotlin", "Android", "Jetpack Compose", "Coroutines", "Gradle", "REST APIs"]
+    elif any(k in text_lower for k in ["security engineer", "cybersecurity", "infosec", "application security"]):
+        job_title = f"{seniority} Security Engineer"
+        competencies = [
+            "Application Security & Threat Modeling",
+            "Cloud Security & Identity Architecture (IAM)",
+            "Vulnerability Assessment & Penetration Testing",
+            "Compliance, Cryptography & Incident Response",
+        ]
+        responsibilities = [
+            "Lead threat modeling, code security audits, and automated static/dynamic vulnerability scans.",
+            "Design zero-trust architectures, RBAC policies, and credential security.",
+        ]
+        required_skills = ["Cybersecurity", "Application Security", "Threat Modeling", "IAM", "OWASP", "Linux", "Python", "Cloud Security"]
+    elif any(k in text_lower for k in ["qa", "sdet", "test automation", "quality assurance"]):
+        job_title = f"{seniority} QA Automation Engineer (SDET)"
+        competencies = [
+            "Test Framework Architecture & Automation",
+            "E2E Testing, Regression & Integration Suites",
+            "CI/CD Quality Gate Integration",
+            "Performance, Load & Stress Testing",
+        ]
+        responsibilities = [
+            "Architect automated testing frameworks for web, mobile, and microservice APIs.",
+            "Integrate automated quality gates and parallel test execution into CI/CD pipelines.",
+        ]
+        required_skills = ["Selenium", "Playwright", "Cypress", "Python", "JavaScript", "CI/CD", "API Testing"]
+    elif any(k in text_lower for k in ["machine learning", "ai engineer", "deep learning", "llm engineer"]):
         job_title = f"{seniority} AI / Machine Learning Engineer"
         competencies = [
             "Machine Learning Foundations",
@@ -436,18 +576,19 @@ def extract_jd_details(raw_text: str, filename: str = "") -> Dict[str, Any]:
         ]
         required_skills = ["React", "TypeScript", "Next.js", "Tailwind CSS", "HTML5", "CSS3", "Responsive Design"]
     else:
-        job_title = f"{seniority} Full-Stack Software Engineer"
+        job_title = explicit_title or f"{seniority} Full-Stack Software Engineer"
         competencies = [
-            "Full-Lifecycle Application Engineering",
-            "API Design & Client-Server Architecture",
-            "Data Modeling & Storage",
-            "System Reliability & Testing",
+            f"{job_title} Architecture & System Design",
+            "Technical Execution & Trade-offs",
+            "Cross-Functional Collaboration & Delivery",
+            "System Reliability, Scalability & Best Practices",
         ]
         responsibilities = [
-            "Deliver end-to-end features spanning modern web frontends and scalable backend services.",
-            "Design database schemas, write automated tests, and maintain CI/CD pipelines.",
+            f"Lead technical design, implementation, and execution for {job_title} initiatives.",
+            "Collaborate with cross-functional teams to deliver scalable and reliable solutions.",
+            "Establish engineering best practices, code quality standards, and technical roadmaps.",
         ]
-        required_skills = ["Python", "TypeScript", "React", "FastAPI", "PostgreSQL", "Docker", "Git"]
+        required_skills = [s for s in extract_skills_from_resume_text(raw_text)[:8]] or ["System Design", "Technical Architecture", "Problem Solving", "Collaboration"]
 
     # Also detect any specific skills mentioned in JD
     all_matched_skills = extract_skills_from_resume_text(raw_text)

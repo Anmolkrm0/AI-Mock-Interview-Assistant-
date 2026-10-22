@@ -19,7 +19,9 @@ import {
   Sparkles,
   Camera,
   Mic,
-  ShieldCheck
+  ShieldCheck,
+  Briefcase,
+  Edit3
 } from "lucide-react";
 import { uploadResumeApi, uploadJobDescriptionApi, detectRolesApi, createInterviewApi } from "@/services/api";
 
@@ -42,14 +44,10 @@ export default function InterviewSetupPage() {
   const [jdUploading, setJdUploading] = useState(false);
   const [jdError, setJdError] = useState<string | null>(null);
 
-  // Step D: Role Selection state
-  const [detectedRoles, setDetectedRoles] = useState<string[]>([
-    "Senior AI Technical Product Manager",
-    "Staff Technical Product Manager",
-    "Senior Distributed Systems Engineer",
-    "Full-Stack Software Engineer",
-  ]);
-  const [selectedRole, setSelectedRole] = useState("Senior AI Technical Product Manager");
+  // Step D: Role Selection state (dynamically extracted or user-typed)
+  const [detectedRoles, setDetectedRoles] = useState<string[]>([]);
+  const [selectedRole, setSelectedRole] = useState<string>("");
+  const [roleSource, setRoleSource] = useState<"extracted" | "custom" | null>(null);
   const [isDetectingRoles, setIsDetectingRoles] = useState(false);
 
   // Step E & F: Duration & Rigor
@@ -81,6 +79,7 @@ export default function InterviewSetupPage() {
         setParsedJd(jdResult.extracted_data);
         if (jdResult.extracted_data.job_title) {
           setSelectedRole(jdResult.extracted_data.job_title);
+          setRoleSource("extracted");
         }
       }
 
@@ -93,14 +92,17 @@ export default function InterviewSetupPage() {
         content = activeFile.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
       }
       if (!content || content.trim().length < 5) {
-        content = activeFile?.name || "AI Technical Product Manager";
+        content = activeFile?.name || (jdResult.extracted_data?.job_title) || "";
       }
 
-      const rolesRes = await detectRolesApi(content.trim(), activeFile?.name);
-      if (rolesRes.detected_roles && rolesRes.detected_roles.length > 0) {
-        const roleTitles = rolesRes.detected_roles.map((r: any) => r.title);
-        setDetectedRoles(roleTitles);
-        setSelectedRole(rolesRes.primary_role || roleTitles[0]);
+      if (content.trim()) {
+        const rolesRes = await detectRolesApi(content.trim(), activeFile?.name);
+        if (rolesRes.detected_roles && rolesRes.detected_roles.length > 0) {
+          const roleTitles = rolesRes.detected_roles.map((r: any) => r.title);
+          setDetectedRoles(roleTitles);
+          setSelectedRole(rolesRes.primary_role || roleTitles[0]);
+          setRoleSource("extracted");
+        }
       }
     } catch (err: any) {
       const msg = typeof err === "string" ? err : err.message || "Failed to analyze job description.";
@@ -134,14 +136,10 @@ export default function InterviewSetupPage() {
       setResumeDocId(result.id);
       setParsedCandidate(result.extracted_data);
 
-      // If user hasn't uploaded a JD yet, infer target role from candidate profile
-      if (!jdDocId && result.extracted_data?.skills?.length > 0) {
-        const skillsText = result.extracted_data.skills.join(" ").toLowerCase();
-        if (skillsText.includes("product") || skillsText.includes("prd") || skillsText.includes("roadmapping")) {
-          setSelectedRole("Senior AI Technical Product Manager");
-        } else if (skillsText.includes("kafka") || skillsText.includes("distributed")) {
-          setSelectedRole("Senior Distributed Systems Engineer");
-        }
+      // If user hasn't specified a role yet and resume has title, suggest it
+      if (!selectedRole && !jdDocId && result.extracted_data?.job_title) {
+        setSelectedRole(result.extracted_data.job_title);
+        setRoleSource("custom");
       }
     } catch (err: any) {
       setResumeError(err.message || "Failed to parse resume.");
@@ -415,6 +413,11 @@ export default function InterviewSetupPage() {
                   rows={5}
                   value={jdText}
                   onChange={(e) => setJdText(e.target.value)}
+                  onBlur={() => {
+                    if (jdText.trim().length >= 30 && !parsedJd && !jdUploading && !isDetectingRoles) {
+                      processJobDescription(null, jdText);
+                    }
+                  }}
                   placeholder="Paste the job description, required qualifications, and core duties here..."
                   className="w-full p-4 rounded-xl border border-slate-300 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm"
                 />
@@ -524,44 +527,75 @@ export default function InterviewSetupPage() {
           </section>
 
 
-          {/* STEP D: Target Job Role */}
+          {/* STEP C: Target Job Role */}
           <section className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm">
-            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 mb-2">
-              <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-extrabold flex items-center justify-center">
-                C
-              </span>
-              Target Job Role &amp; Seniority
-            </h2>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-extrabold flex items-center justify-center">
+                  C
+                </span>
+                Target Job Role &amp; Seniority
+              </h2>
+              {roleSource === "extracted" && selectedRole && (
+                <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-semibold flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5" /> Extracted from JD
+                </span>
+              )}
+              {roleSource === "custom" && selectedRole && (
+                <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold flex items-center gap-1">
+                  <Edit3 className="w-3.5 h-3.5" /> Custom Target Role
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-500 mb-4">
-              Confirm or customize the role you are interviewing for.
+              Type any target role of your choice, or select from roles auto-extracted from your Job Description above.
             </p>
 
             <div className="space-y-3">
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                Confirmed Role Title
-              </label>
-              <input
-                type="text"
-                value={selectedRole}
-                onChange={(e) => setSelectedRole(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-medium text-sm focus:outline-none focus:ring-2 focus:ring-blue-600"
-              />
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Target Role Title</span>
+                  <span className="text-[11px] font-normal lowercase text-slate-400">Freely editable</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Briefcase className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="text"
+                    value={selectedRole}
+                    onChange={(e) => {
+                      setSelectedRole(e.target.value);
+                      setRoleSource("custom");
+                    }}
+                    placeholder="Type any target role (e.g. Senior Backend Engineer, DevOps Lead, Data Scientist...)"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-medium text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white placeholder:text-slate-400"
+                  />
+                </div>
+              </div>
 
               {detectedRoles.length > 0 && (
                 <div className="pt-2">
-                  <span className="text-xs text-slate-500">Quick suggestions:</span>
-                  <div className="flex flex-wrap gap-2 mt-1.5">
+                  <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                    Suggestions extracted from Job Description:
+                  </span>
+                  <div className="flex flex-wrap gap-2 mt-2">
                     {detectedRoles.map((role, idx) => (
                       <button
                         key={idx}
                         type="button"
-                        onClick={() => setSelectedRole(role)}
-                        className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all ${
+                        onClick={() => {
+                          setSelectedRole(role);
+                          setRoleSource("extracted");
+                        }}
+                        className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all flex items-center gap-1.5 ${
                           selectedRole === role
-                            ? "bg-blue-50 border-blue-400 text-blue-700"
-                            : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                            ? "bg-blue-50 border-blue-400 text-blue-700 shadow-2xs"
+                            : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300"
                         }`}
                       >
+                        {selectedRole === role && <CheckCircle2 className="w-3 h-3 text-blue-600" />}
                         {role}
                       </button>
                     ))}

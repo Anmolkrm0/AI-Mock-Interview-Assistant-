@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Dict, Any, List, Optional
 from google import genai
 from google.genai import types
@@ -8,13 +9,64 @@ from backend.app.schemas.role import RoleDetectionResponse, DetectedRole
 
 
 async def detect_roles_from_job_description(jd_text: str, filename: str = "") -> Dict[str, Any]:
-
     """
     Detects plausible candidate roles with seniority levels and confidence scores.
-    Leverages both JD text content and uploaded filename for maximum precision.
+    Leverages explicit regex patterns, JD text content, uploaded filename, and Gemini AI.
     """
     combined_context = f"{filename} {jd_text}".strip()
+    text_lower = combined_context.lower()
 
+    # 1. Seniority detection
+    seniority = "Senior"
+    if any(w in text_lower for w in ["lead", "principal", "staff", "director", "head of", "vp", "chief"]):
+        seniority = "Staff"
+    elif any(w in text_lower for w in ["junior", "associate", "entry", "intern"]):
+        seniority = "Junior"
+
+    # 2. Check for explicit job title labels in text or filename
+    explicit_title: Optional[str] = None
+    title_match = re.search(
+        r"(?:job\s*title|job\s*role|position|role|title)\s*[:\-–]\s*([A-Za-z0-9\s\/\-_()&+]+)",
+        jd_text,
+        re.IGNORECASE,
+    )
+    if title_match:
+        candidate_t = title_match.group(1).strip().split("\n")[0].strip()
+        candidate_t = re.sub(r"[,;].*$", "", candidate_t).strip()
+        candidate_t = re.sub(r"^(?:an?|the)\s+", "", candidate_t, flags=re.IGNORECASE).strip()
+        if 3 <= len(candidate_t) <= 60 and not any(w in candidate_t.lower() for w in ["description", "overview", "summary", "about us", "location", "salary", "responsibilities", "qualifications"]):
+            candidate_t = re.sub(r"\bTPM\b", "Technical Product Manager", candidate_t, flags=re.IGNORECASE)
+            candidate_t = re.sub(r"\bPM\b", "Product Manager", candidate_t, flags=re.IGNORECASE)
+            candidate_t = re.sub(r"\bSRE\b", "Site Reliability Engineer", candidate_t, flags=re.IGNORECASE)
+            explicit_title = candidate_t.strip()
+
+    if not explicit_title:
+        hiring_match = re.search(
+            r"(?:we(?:'re|\s+are)\s+(?:hiring|looking\s+for|seeking)|seeking\s+an?|hiring\s+an?)\s+([A-Za-z0-9\s\/\-_()&+]+?)(?:\s+to|\s+who|\s+for|\.|\n|,|;)",
+            jd_text,
+            re.IGNORECASE,
+        )
+        if hiring_match:
+            candidate_t = hiring_match.group(1).strip()
+            candidate_t = re.sub(r"^(?:an?|the)\s+", "", candidate_t, flags=re.IGNORECASE).strip()
+            if 3 <= len(candidate_t) <= 60 and any(w in candidate_t.lower() for w in ["engineer", "developer", "manager", "architect", "lead", "specialist", "scientist", "analyst", "director", "pm", "tpm", "sre", "devops"]):
+                candidate_t = re.sub(r"\bTPM\b", "Technical Product Manager", candidate_t, flags=re.IGNORECASE)
+                candidate_t = re.sub(r"\bPM\b", "Product Manager", candidate_t, flags=re.IGNORECASE)
+                candidate_t = re.sub(r"\bSRE\b", "Site Reliability Engineer", candidate_t, flags=re.IGNORECASE)
+                explicit_title = candidate_t.strip()
+
+    if not explicit_title and filename:
+        clean_fname = re.sub(r"\.(pdf|docx|txt)$", "", filename, flags=re.IGNORECASE)
+        clean_fname = re.sub(r"[_\-]+", " ", clean_fname)
+        clean_fname = re.sub(r"(?i)\b(jd|job\s*description|resume|cv|posting|specification)\b", "", clean_fname).strip()
+        clean_fname = re.sub(r"^(?:an?|the)\s+", "", clean_fname, flags=re.IGNORECASE).strip()
+        if 3 <= len(clean_fname) <= 60 and any(w in clean_fname.lower() for w in ["engineer", "developer", "manager", "architect", "lead", "specialist", "scientist", "analyst", "director", "pm", "tpm", "sre", "devops"]):
+            clean_fname = re.sub(r"\bTPM\b", "Technical Product Manager", clean_fname, flags=re.IGNORECASE)
+            clean_fname = re.sub(r"\bPM\b", "Product Manager", clean_fname, flags=re.IGNORECASE)
+            clean_fname = re.sub(r"\bSRE\b", "Site Reliability Engineer", clean_fname, flags=re.IGNORECASE)
+            explicit_title = clean_fname.strip()
+
+    # 3. Gemini-based role detection if API key configured
     if settings.GEMINI_API_KEY:
         try:
             client = genai.Client(api_key=settings.GEMINI_API_KEY)
@@ -35,25 +87,41 @@ Job Description:
                 ),
             )
             if response.text:
-                return json.loads(response.text.strip())
+                parsed = json.loads(response.text.strip())
+                if parsed.get("detected_roles"):
+                    if explicit_title and not any(explicit_title.lower() in r.get("title", "").lower() for r in parsed["detected_roles"]):
+                        parsed["detected_roles"].insert(0, {
+                            "title": explicit_title,
+                            "seniority": seniority,
+                            "confidence": 0.98,
+                            "reasoning": f"Explicit job title extracted from document specification: '{explicit_title}'",
+                        })
+                        parsed["primary_role"] = explicit_title
+                    return parsed
         except Exception as err:
             print(f"Gemini role detection failed: {err}")
 
-    # Fallback heuristic role detection
-    text_lower = combined_context.lower()
-    seniority = "Senior"
-    if any(w in text_lower for w in ["lead", "principal", "staff", "director", "head of", "vp"]):
-        seniority = "Staff"
-    elif any(w in text_lower for w in ["junior", "associate", "entry", "intern"]):
-        seniority = "Junior"
+    # 4. Fallback heuristic role detection
+    roles: List[Dict[str, Any]] = []
 
-    # Match role
-    if any(k in text_lower for k in ["ai technical pm", "technical pm", "ai tpm", "technical product manager", "product manager", "product owner", "product management", "tpm"]):
-        if any(ai_k in text_lower for ai_k in ["ai", "machine learning", "ml", "llm", "generative"]):
-            detected_title = f"{seniority} AI Technical Product Manager"
-            roles = [
+    # If explicit title found, prioritize it at the top
+    if explicit_title:
+        roles.append({
+            "title": explicit_title,
+            "seniority": seniority,
+            "confidence": 0.98,
+            "reasoning": f"Explicit role title extracted directly from job description: '{explicit_title}'.",
+        })
+
+    # Domain keyword matching
+    search_context = f"{explicit_title or ''} {text_lower}".lower()
+
+    if any(k in search_context for k in ["ai technical pm", "technical pm", "ai tpm", "technical product manager", "product manager", "product owner", "product management", "tpm"]):
+        if any(ai_k in search_context for ai_k in ["ai", "machine learning", "ml", "llm", "generative"]):
+            detected_title = explicit_title or f"{seniority} AI Technical Product Manager"
+            roles.extend([
                 {
-                    "title": detected_title,
+                    "title": f"{seniority} AI Technical Product Manager",
                     "seniority": seniority,
                     "confidence": 0.95,
                     "reasoning": "Job specification emphasizes AI product roadmapping, technical architecture, and cross-functional engineering leadership.",
@@ -70,12 +138,12 @@ Job Description:
                     "confidence": 0.83,
                     "reasoning": "Focus on AI/LLM platform strategy, model integration, and engineering alignment.",
                 },
-            ]
+            ])
         else:
-            detected_title = f"{seniority} Technical Product Manager"
-            roles = [
+            detected_title = explicit_title or f"{seniority} Technical Product Manager"
+            roles.extend([
                 {
-                    "title": detected_title,
+                    "title": f"{seniority} Technical Product Manager",
                     "seniority": seniority,
                     "confidence": 0.94,
                     "reasoning": "Matches technical product leadership, PRD specification, and cross-functional delivery.",
@@ -92,12 +160,56 @@ Job Description:
                     "confidence": 0.78,
                     "reasoning": "Backlog prioritization and sprint execution.",
                 },
-            ]
-    elif any(k in text_lower for k in ["machine learning", "ai engineer", "deep learning", "llm engineer", "nlp engineer"]):
-        detected_title = f"{seniority} AI / Machine Learning Engineer"
-        roles = [
+            ])
+    elif any(k in search_context for k in ["devops", "sre", "site reliability", "platform engineer", "infrastructure engineer", "cloud engineer"]):
+        detected_title = explicit_title or f"{seniority} DevOps / Site Reliability Engineer"
+        roles.extend([
             {
-                "title": detected_title,
+                "title": f"{seniority} DevOps / Site Reliability Engineer",
+                "seniority": seniority,
+                "confidence": 0.95,
+                "reasoning": "Emphasizes infrastructure as code, CI/CD pipelines, Kubernetes, and production site reliability.",
+            },
+            {
+                "title": f"{seniority} Cloud Platform Engineer",
+                "seniority": seniority,
+                "confidence": 0.89,
+                "reasoning": "Scalable cloud architecture, infrastructure automation, and Terraform provisioning.",
+            },
+            {
+                "title": f"{seniority} Systems Administrator / SRE",
+                "seniority": seniority,
+                "confidence": 0.81,
+                "reasoning": "Linux operations, observability, incident management, and SLO governance.",
+            },
+        ])
+    elif any(k in search_context for k in ["data engineer", "data platform", "etl engineer", "big data", "data pipeline"]):
+        detected_title = explicit_title or f"{seniority} Data Engineer"
+        roles.extend([
+            {
+                "title": f"{seniority} Data Engineer",
+                "seniority": seniority,
+                "confidence": 0.94,
+                "reasoning": "Data pipelines, warehousing, ETL, Spark, Kafka, and stream processing.",
+            },
+            {
+                "title": f"{seniority} Analytics Engineer",
+                "seniority": seniority,
+                "confidence": 0.86,
+                "reasoning": "Data modeling in dbt, SQL transformation, and business intelligence pipelines.",
+            },
+            {
+                "title": f"{seniority} Big Data Architect",
+                "seniority": seniority,
+                "confidence": 0.80,
+                "reasoning": "High-throughput data storage, distributed querying, and data lake architecture.",
+            },
+        ])
+    elif any(k in search_context for k in ["machine learning", "ai engineer", "deep learning", "llm engineer", "nlp engineer", "computer vision"]):
+        detected_title = explicit_title or f"{seniority} AI / Machine Learning Engineer"
+        roles.extend([
+            {
+                "title": f"{seniority} AI / Machine Learning Engineer",
                 "seniority": seniority,
                 "confidence": 0.94,
                 "reasoning": "Deep focus on machine learning algorithms, model training, and AI system design.",
@@ -114,12 +226,12 @@ Job Description:
                 "confidence": 0.80,
                 "reasoning": "Statistical analysis, model evaluation, and machine learning research.",
             },
-        ]
-    elif any(k in text_lower for k in ["distributed systems", "systems engineer", "distributed"]):
-        detected_title = f"{seniority} Distributed Systems Engineer"
-        roles = [
+        ])
+    elif any(k in search_context for k in ["distributed systems", "systems engineer", "distributed"]):
+        detected_title = explicit_title or f"{seniority} Distributed Systems Engineer"
+        roles.extend([
             {
-                "title": detected_title,
+                "title": f"{seniority} Distributed Systems Engineer",
                 "seniority": seniority,
                 "confidence": 0.93,
                 "reasoning": "High-throughput distributed systems, consensus protocols, and fault-tolerant architecture.",
@@ -136,15 +248,95 @@ Job Description:
                 "confidence": 0.82,
                 "reasoning": "Underlying cloud infrastructure and service mesh reliability.",
             },
-        ]
-    elif any(k in text_lower for k in ["backend", "api engineer", "server"]):
-        detected_title = f"{seniority} Backend Engineer"
-        roles = [
+        ])
+    elif any(k in search_context for k in ["ios", "swift", "apple developer"]):
+        detected_title = explicit_title or f"{seniority} iOS Engineer"
+        roles.extend([
             {
-                "title": detected_title,
+                "title": f"{seniority} iOS Engineer",
+                "seniority": seniority,
+                "confidence": 0.94,
+                "reasoning": "Native iOS mobile application development with Swift and SwiftUI.",
+            },
+            {
+                "title": f"{seniority} Mobile Engineer",
+                "seniority": seniority,
+                "confidence": 0.86,
+                "reasoning": "Cross-platform and native mobile software architecture.",
+            },
+        ])
+    elif any(k in search_context for k in ["android", "kotlin"]):
+        detected_title = explicit_title or f"{seniority} Android Engineer"
+        roles.extend([
+            {
+                "title": f"{seniority} Android Engineer",
+                "seniority": seniority,
+                "confidence": 0.94,
+                "reasoning": "Native Android development with Kotlin and Jetpack Compose.",
+            },
+            {
+                "title": f"{seniority} Mobile Engineer",
+                "seniority": seniority,
+                "confidence": 0.86,
+                "reasoning": "Mobile client architecture and offline data synchronization.",
+            },
+        ])
+    elif any(k in search_context for k in ["security engineer", "cybersecurity", "infosec", "appsec"]):
+        detected_title = explicit_title or f"{seniority} Security Engineer"
+        roles.extend([
+            {
+                "title": f"{seniority} Security Engineer",
+                "seniority": seniority,
+                "confidence": 0.94,
+                "reasoning": "Application security, penetration testing, threat modeling, and IAM.",
+            },
+            {
+                "title": f"{seniority} Cloud Security Architect",
+                "seniority": seniority,
+                "confidence": 0.85,
+                "reasoning": "Zero-trust architecture, cloud compliance, and security policy automation.",
+            },
+        ])
+    elif any(k in search_context for k in ["qa", "sdet", "test automation", "quality assurance"]):
+        detected_title = explicit_title or f"{seniority} QA Automation Engineer (SDET)"
+        roles.extend([
+            {
+                "title": f"{seniority} QA Automation Engineer (SDET)",
+                "seniority": seniority,
+                "confidence": 0.94,
+                "reasoning": "Test automation frameworks, E2E test suites, and CI/CD quality gate enforcement.",
+            },
+            {
+                "title": f"{seniority} Software Engineer in Test",
+                "seniority": seniority,
+                "confidence": 0.88,
+                "reasoning": "Automated regression testing, performance benchmarking, and test architecture.",
+            },
+        ])
+    elif any(k in search_context for k in ["data scientist", "data science"]):
+        detected_title = explicit_title or f"{seniority} Data Scientist"
+        roles.extend([
+            {
+                "title": f"{seniority} Data Scientist",
+                "seniority": seniority,
+                "confidence": 0.93,
+                "reasoning": "Statistical modeling, exploratory analysis, hypothesis testing, and business impact.",
+            },
+            {
+                "title": f"{seniority} Machine Learning Engineer",
+                "seniority": seniority,
+                "confidence": 0.85,
+                "reasoning": "Translating statistical prototypes into production predictive models.",
+            },
+        ])
+    elif any(k in search_context for k in ["backend", "api engineer", "server", "microservices"]):
+        detected_title = explicit_title or f"{seniority} Backend Engineer"
+        roles.extend([
+            {
+                "title": f"{seniority} Backend Engineer",
                 "seniority": seniority,
                 "confidence": 0.92,
-                "reasoning": "API development, data models, and backend business logic.",
+                "reasoning": "API development, relational data models, and backend business logic.",
             },
             {
                 "title": "Full-Stack Software Engineer",
@@ -158,12 +350,12 @@ Job Description:
                 "confidence": 0.77,
                 "reasoning": "Infrastructure, CI/CD, and service reliability.",
             },
-        ]
-    elif any(k in text_lower for k in ["frontend", "react", "ui engineer", "web developer"]):
-        detected_title = f"{seniority} Frontend Engineer"
-        roles = [
+        ])
+    elif any(k in search_context for k in ["frontend", "react", "ui engineer", "web developer"]):
+        detected_title = explicit_title or f"{seniority} Frontend Engineer"
+        roles.extend([
             {
-                "title": detected_title,
+                "title": f"{seniority} Frontend Engineer",
                 "seniority": seniority,
                 "confidence": 0.93,
                 "reasoning": "Modern client-side web development and user experience architecture.",
@@ -180,37 +372,15 @@ Job Description:
                 "confidence": 0.76,
                 "reasoning": "Design systems and interface performance.",
             },
-        ]
-    elif any(k in text_lower for k in ["data engineer", "pipeline", "etl", "data warehouse"]):
-        detected_title = f"{seniority} Data Engineer"
-        roles = [
+        ])
+    else:
+        detected_title = explicit_title or f"{seniority} Full-Stack Software Engineer"
+        roles.extend([
             {
                 "title": detected_title,
                 "seniority": seniority,
-                "confidence": 0.92,
-                "reasoning": "Data pipelines, warehousing, ETL, and stream processing.",
-            },
-            {
-                "title": f"{seniority} Analytics Engineer",
-                "seniority": seniority,
-                "confidence": 0.83,
-                "reasoning": "Data modeling and business intelligence pipelines.",
-            },
-            {
-                "title": f"{seniority} Backend Engineer",
-                "seniority": seniority,
-                "confidence": 0.78,
-                "reasoning": "Database design and scalable data access layers.",
-            },
-        ]
-    else:
-        detected_title = "Full-Stack Software Engineer"
-        roles = [
-            {
-                "title": "Full-Stack Software Engineer",
-                "seniority": "Mid-Senior",
                 "confidence": 0.85,
-                "reasoning": "General end-to-end software delivery and client-server development.",
+                "reasoning": f"End-to-end software delivery and architecture for {detected_title}.",
             },
             {
                 "title": f"{seniority} Backend Engineer",
@@ -224,10 +394,21 @@ Job Description:
                 "confidence": 0.75,
                 "reasoning": "Reliability and scalability.",
             },
-        ]
+        ])
+
+    # Deduplicate roles by title
+    seen_titles = set()
+    deduped_roles = []
+    for r in roles:
+        t_key = r["title"].strip().lower()
+        if t_key not in seen_titles:
+            seen_titles.add(t_key)
+            deduped_roles.append(r)
+
+    primary_role = deduped_roles[0]["title"] if deduped_roles else (explicit_title or f"{seniority} Software Engineer")
 
     return {
-        "detected_roles": roles,
-        "primary_role": detected_title,
+        "detected_roles": deduped_roles,
+        "primary_role": primary_role,
     }
 

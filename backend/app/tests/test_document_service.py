@@ -144,3 +144,26 @@ async def test_role_detection_service_ai_pm():
     assert "AI Technical Product Manager" in res["primary_role"]
     assert res["detected_roles"][0]["confidence"] >= 0.85
 
+
+@pytest.mark.asyncio
+async def test_role_detection_explicit_title_in_jd():
+    from backend.app.services.role_detection_service import detect_roles_from_job_description
+    res = await detect_roles_from_job_description(
+        "Job Title: Staff Site Reliability Engineer\nLocation: Remote\nResponsibilities include Terraform, Kubernetes, and Prometheus SLOs.",
+        filename="",
+    )
+    assert "Staff Site Reliability Engineer" in res["primary_role"]
+    assert res["detected_roles"][0]["confidence"] >= 0.90
+
+
+@pytest.mark.asyncio
+async def test_role_detection_from_filename():
+    from backend.app.services.role_detection_service import detect_roles_from_job_description
+    res = await detect_roles_from_job_description(
+        "Design scalable data streaming architectures with Kafka and Spark.",
+        filename="Lead Data Engineer JD.docx",
+    )
+    assert "Data Engineer" in res["primary_role"]
+    assert len(res["detected_roles"]) >= 1
+
+
