@@ -28,7 +28,7 @@ class InterviewResponse(BaseModel):
     deadline_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
-    plan: Optional[InterviewPlanResponse] = None
+    plan: Optional[Any] = None
 
     overall_score: Optional[int] = None
     has_recording: bool = False

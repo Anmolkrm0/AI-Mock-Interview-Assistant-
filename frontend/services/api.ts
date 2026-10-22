@@ -1,6 +1,16 @@
 import { supabase } from "@/lib/supabase";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+export function getApiBase(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  if (typeof window !== "undefined") {
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    return `${protocol}//${hostname}:8000/api/v1`;
+  }
+  return "http://localhost:8000/api/v1";
+}
 
 export async function getAuthToken(): Promise<string | undefined> {
   try {
@@ -38,7 +48,7 @@ export async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 export async function getDemoTokenApi() {
-  const res = await fetch(`${API_BASE}/auth/demo-token`, {
+  const res = await fetch(`${getApiBase()}/auth/demo-token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
@@ -55,7 +65,7 @@ export async function getDemoTokenApi() {
 }
 
 export async function devLoginApi(email: string, password?: string) {
-  const res = await fetch(`${API_BASE}/auth/login`, {
+  const res = await fetch(`${getApiBase()}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password: password || "password123" }),
@@ -84,7 +94,7 @@ export async function uploadResumeApi(file: File) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}/documents/resume`, {
+  const res = await fetch(`${getApiBase()}/documents/resume`, {
     method: "POST",
     headers,
     body: formData,
@@ -113,7 +123,7 @@ export async function uploadJobDescriptionApi(params: { file?: File; textContent
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}/documents/job-description`, {
+  const res = await fetch(`${getApiBase()}/documents/job-description`, {
     method: "POST",
     headers,
     body: formData,
@@ -128,7 +138,7 @@ export async function uploadJobDescriptionApi(params: { file?: File; textContent
 
 export async function detectRolesApi(jobDescriptionText: string, filename?: string) {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/roles/detect`, {
+  const res = await fetch(`${getApiBase()}/roles/detect`, {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -153,7 +163,7 @@ export async function createInterviewApi(params: {
   evaluation_rigor: string;
 }) {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/interviews`, {
+  const res = await fetch(`${getApiBase()}/interviews`, {
     method: "POST",
     headers,
     body: JSON.stringify(params),
@@ -168,7 +178,7 @@ export async function createInterviewApi(params: {
 
 export async function getInterviewApi(interviewId: string) {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/interviews/${interviewId}`, {
+  const res = await fetch(`${getApiBase()}/interviews/${interviewId}`, {
     method: "GET",
     headers,
   });
@@ -182,7 +192,7 @@ export async function getInterviewApi(interviewId: string) {
 
 export async function getInterviewStatusApi(interviewId: string) {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/interviews/${interviewId}/status`, {
+  const res = await fetch(`${getApiBase()}/interviews/${interviewId}/status`, {
     method: "GET",
     headers,
   });
@@ -196,7 +206,7 @@ export async function getInterviewStatusApi(interviewId: string) {
 
 export async function triggerEvaluationApi(interviewId: string) {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/interviews/${interviewId}/evaluate`, {
+  const res = await fetch(`${getApiBase()}/interviews/${interviewId}/evaluate`, {
     method: "POST",
     headers,
   });
@@ -210,7 +220,7 @@ export async function triggerEvaluationApi(interviewId: string) {
 
 export async function getInterviewReportApi(interviewId: string) {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/interviews/${interviewId}/report`, {
+  const res = await fetch(`${getApiBase()}/interviews/${interviewId}/report`, {
     method: "GET",
     headers,
   });
@@ -224,7 +234,7 @@ export async function getInterviewReportApi(interviewId: string) {
 
 export async function submitFeedbackApi(interviewId: string, rating: number, comments?: string) {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/interviews/${interviewId}/feedback`, {
+  const res = await fetch(`${getApiBase()}/interviews/${interviewId}/feedback`, {
     method: "POST",
     headers,
     body: JSON.stringify({ rating, comments: comments || null }),
@@ -239,7 +249,7 @@ export async function submitFeedbackApi(interviewId: string, rating: number, com
 
 export async function listInterviewsApi(skip: number = 0, limit: number = 20) {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/interviews?skip=${skip}&limit=${limit}`, {
+  const res = await fetch(`${getApiBase()}/interviews?skip=${skip}&limit=${limit}`, {
     method: "GET",
     headers,
   });
@@ -253,7 +263,7 @@ export async function listInterviewsApi(skip: number = 0, limit: number = 20) {
 
 export async function getRecordingUrlApi(interviewId: string) {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/interviews/${interviewId}/recording-url`, {
+  const res = await fetch(`${getApiBase()}/interviews/${interviewId}/recording-url`, {
     method: "GET",
     headers,
   });
@@ -267,7 +277,7 @@ export async function getRecordingUrlApi(interviewId: string) {
 
 export async function getLatestRecordingApi() {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/recordings/latest`, {
+  const res = await fetch(`${getApiBase()}/recordings/latest`, {
     method: "GET",
     headers,
   });
@@ -281,7 +291,7 @@ export async function getLatestRecordingApi() {
 
 export async function deleteLatestRecordingApi() {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE}/recordings/latest`, {
+  const res = await fetch(`${getApiBase()}/recordings/latest`, {
     method: "DELETE",
     headers,
   });

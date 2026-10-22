@@ -1,6 +1,6 @@
 import uuid
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class CompetencyWeight(BaseModel):
@@ -32,4 +32,11 @@ class InterviewPlanResponse(BaseModel):
     questions: List[PlannedQuestion] = Field(..., min_length=2)
     total_estimated_minutes: int
     competency_weights: List[CompetencyWeight] = Field(default_factory=list)
+
+    @field_validator("competency_weights", mode="before")
+    @classmethod
+    def normalize_competency_weights(cls, v):
+        if isinstance(v, dict):
+            return [{"competency": k, "weight": float(val)} for k, val in v.items()]
+        return v
 

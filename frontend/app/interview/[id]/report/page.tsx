@@ -109,22 +109,40 @@ export default function InterviewReportPage() {
         setLoading(true);
         setErrorMsg(null);
 
-        // Fetch interview details and report in parallel
-        const [interviewRes, reportRes] = await Promise.all([
-          getInterviewApi(interviewId),
-          getInterviewReportApi(interviewId),
-        ]);
+        // 1. Fetch interview details
+        let interviewRes: InterviewData | null = null;
+        try {
+          interviewRes = await getInterviewApi(interviewId);
+          setInterview(interviewRes);
+        } catch (e: any) {
+          console.warn("Could not fetch interview details:", e);
+        }
 
-        setInterview(interviewRes);
-        setReport(reportRes);
+        // 2. Fetch report, with auto-evaluation fallback
+        let reportRes: ReportData | null = null;
+        try {
+          reportRes = await getInterviewReportApi(interviewId);
+        } catch (repErr: any) {
+          console.warn("Report not ready yet, attempting auto-evaluation:", repErr);
+          try {
+            reportRes = await triggerEvaluationApi(interviewId);
+          } catch (evalErr: any) {
+            console.error("Evaluation trigger failed:", evalErr);
+            throw new Error(repErr.message || "Evaluation report has not been generated yet.");
+          }
+        }
 
-        // Initialize first 2 questions as expanded
-        if (reportRes.question_evaluations) {
-          const initialExpanded: Record<number, boolean> = {};
-          reportRes.question_evaluations.forEach((q: QuestionEvaluation, idx: number) => {
-            initialExpanded[q.question_id || idx] = idx < 2;
-          });
-          setExpandedQuestions(initialExpanded);
+        if (reportRes) {
+          setReport(reportRes);
+
+          // Initialize first 2 questions as expanded
+          if (reportRes.question_evaluations) {
+            const initialExpanded: Record<number, boolean> = {};
+            reportRes.question_evaluations.forEach((q: QuestionEvaluation, idx: number) => {
+              initialExpanded[q.question_id || idx] = idx < 2;
+            });
+            setExpandedQuestions(initialExpanded);
+          }
         }
 
         // Attempt to fetch audio recording presigned URL
@@ -200,8 +218,19 @@ export default function InterviewReportPage() {
           <p className="text-sm text-slate-600 mb-6">{errorMsg || "The evaluation report could not be found."}</p>
           <div className="flex gap-3 justify-center">
             <button
-              onClick={() => router.push(`/interview/${interviewId}/processing`)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700"
+              onClick={async () => {
+                setLoading(true);
+                setErrorMsg(null);
+                try {
+                  const rep = await triggerEvaluationApi(interviewId);
+                  setReport(rep);
+                } catch {
+                  router.push(`/interview/${interviewId}/processing`);
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition"
             >
               Trigger Evaluation
             </button>
