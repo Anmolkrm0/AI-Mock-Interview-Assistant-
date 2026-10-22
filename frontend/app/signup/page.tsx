@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bot, Lock, Mail, ArrowRight, AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { devLoginApi } from "@/services/api";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -33,20 +34,30 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
+      let supabaseSuccess = false;
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
 
-      if (error) {
-        setErrorMsg(error.message);
-        return;
+        if (!error) {
+          supabaseSuccess = true;
+          if (data.session) {
+            router.push("/dashboard");
+            return;
+          } else {
+            setSuccessMsg("Account created! Please check your email to confirm registration or sign in.");
+            return;
+          }
+        }
+      } catch {
+        // Fall back to dev auth
       }
 
-      if (data.session) {
+      if (!supabaseSuccess) {
+        await devLoginApi(email, password);
         router.push("/dashboard");
-      } else {
-        setSuccessMsg("Account created! Please check your email to confirm registration or sign in.");
       }
     } catch (err: any) {
       setErrorMsg(err.message || "An unexpected error occurred during signup.");

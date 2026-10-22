@@ -68,14 +68,29 @@ export default function DashboardPage() {
     async function initDashboard() {
       try {
         setLoading(true);
-        // Check session
-        const { data } = await supabase.auth.getSession();
-        if (!data.session) {
-          // If unauthenticated, redirect to login
+        // Check session: Supabase first, then local dev token fallback
+        let email: string | null = null;
+        try {
+          const { data } = await supabase.auth.getSession();
+          if (data?.session?.user?.email) {
+            email = data.session.user.email;
+          }
+        } catch {}
+
+        if (!email && typeof window !== "undefined") {
+          const devToken = localStorage.getItem("dev_access_token");
+          if (devToken) {
+            email = localStorage.getItem("dev_user_email") || "Demo Candidate";
+          }
+        }
+
+        if (!email) {
+          // If completely unauthenticated, redirect to login
           router.push("/login");
           return;
         }
-        setUserEmail(data.session.user.email || "Candidate");
+
+        setUserEmail(email);
 
         // Fetch user interviews and latest recording in parallel
         const [interviewsRes, recRes] = await Promise.all([
@@ -98,7 +113,14 @@ export default function DashboardPage() {
   }, [router]);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch {}
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("dev_access_token");
+      localStorage.removeItem("dev_user_email");
+      localStorage.removeItem("dev_user_id");
+    }
     router.push("/login");
   };
 

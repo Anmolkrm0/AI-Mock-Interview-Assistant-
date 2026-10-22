@@ -2,9 +2,22 @@ import { supabase } from "@/lib/supabase";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
+export async function getAuthToken(): Promise<string | undefined> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (data?.session?.access_token) {
+      return data.session.access_token;
+    }
+  } catch {}
+  if (typeof window !== "undefined") {
+    const localToken = localStorage.getItem("dev_access_token");
+    if (localToken) return localToken;
+  }
+  return undefined;
+}
+
 export async function getAuthHeaders(): Promise<HeadersInit> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const token = await getAuthToken();
   const headers: HeadersInit = {
     "Content-Type": "application/json",
   };
@@ -14,9 +27,44 @@ export async function getAuthHeaders(): Promise<HeadersInit> {
   return headers;
 }
 
+export async function getDemoTokenApi() {
+  const res = await fetch(`${API_BASE}/auth/demo-token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error("Failed to fetch demo token.");
+  }
+  const data = await res.json();
+  if (typeof window !== "undefined" && data.access_token) {
+    localStorage.setItem("dev_access_token", data.access_token);
+    localStorage.setItem("dev_user_email", data.email);
+    localStorage.setItem("dev_user_id", data.user_id);
+  }
+  return data;
+}
+
+export async function devLoginApi(email: string, password?: string) {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password: password || "password123" }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Sign in failed.");
+  }
+  const data = await res.json();
+  if (typeof window !== "undefined" && data.access_token) {
+    localStorage.setItem("dev_access_token", data.access_token);
+    localStorage.setItem("dev_user_email", data.email);
+    localStorage.setItem("dev_user_id", data.user_id);
+  }
+  return data;
+}
+
 export async function uploadResumeApi(file: File) {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const token = await getAuthToken();
 
   const formData = new FormData();
   formData.append("file", file);
@@ -40,8 +88,7 @@ export async function uploadResumeApi(file: File) {
 }
 
 export async function uploadJobDescriptionApi(params: { file?: File; textContent?: string }) {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const token = await getAuthToken();
 
   const formData = new FormData();
   if (params.file) {

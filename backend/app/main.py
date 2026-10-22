@@ -8,6 +8,7 @@ from backend.app.api.v1.interviews import router as interviews_router
 from backend.app.api.v1.live_ws import router as live_ws_router
 from backend.app.api.v1.recordings import router as recordings_router
 from backend.app.api.v1.reports import router as reports_router
+from backend.app.api.v1.auth import router as auth_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -35,6 +36,7 @@ app.include_router(interviews_router, prefix=settings.API_V1_STR, tags=["Intervi
 app.include_router(live_ws_router, prefix=settings.API_V1_STR, tags=["Live WebSocket"])
 app.include_router(recordings_router, prefix=settings.API_V1_STR, tags=["Recordings"])
 app.include_router(reports_router, prefix=settings.API_V1_STR, tags=["Reports & Feedback"])
+app.include_router(auth_router, prefix=settings.API_V1_STR, tags=["Authentication"])
 
 
 @app.on_event("startup")

@@ -3,8 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bot, Lock, Mail, ArrowRight, AlertCircle, Loader2 } from "lucide-react";
+import { Bot, Lock, Mail, ArrowRight, AlertCircle, Loader2, Sparkles } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { devLoginApi, getDemoTokenApi } from "@/services/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,6 +13,21 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
+
+  // 1-Click Instant Demo Login
+  const handleDemoLogin = async () => {
+    setErrorMsg(null);
+    setDemoLoading(true);
+    try {
+      await getDemoTokenApi();
+      router.push("/dashboard");
+    } catch (err: any) {
+      setErrorMsg("Failed to initiate demo login. Please ensure backend is running.");
+    } finally {
+      setDemoLoading(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,17 +35,25 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        setErrorMsg(error.message);
-        return;
+      // 1. Attempt Supabase Auth first
+      let supabaseSuccess = false;
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (!error && data.session) {
+          supabaseSuccess = true;
+          router.push("/dashboard");
+          return;
+        }
+      } catch {
+        // Supabase network / placeholder failure, fall back to local dev auth
       }
 
-      if (data.session) {
+      // 2. If Supabase is unconfigured or failed, fall back seamlessly to local dev auth
+      if (!supabaseSuccess) {
+        await devLoginApi(email, password);
         router.push("/dashboard");
       }
     } catch (err: any) {
@@ -65,6 +89,40 @@ export default function LoginPage() {
               <span>{errorMsg}</span>
             </div>
           )}
+
+          {/* Quick Demo Login Option */}
+          <div className="mb-6">
+            <button
+              type="button"
+              onClick={handleDemoLogin}
+              disabled={demoLoading || loading}
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold text-sm shadow-md shadow-blue-500/20 transition-all disabled:opacity-60"
+            >
+              {demoLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Logging in as Demo Candidate...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-blue-200" />
+                  ⚡ One-Click Demo Candidate Login
+                </>
+              )}
+            </button>
+            <p className="text-[11px] text-center text-slate-400 mt-1.5">
+              Instant access without credentials for local evaluation
+            </p>
+          </div>
+
+          <div className="relative mb-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-3 text-slate-400 font-semibold">Or sign in with email</span>
+            </div>
+          </div>
 
           <form className="space-y-5" onSubmit={handleLogin}>
             <div>
@@ -108,8 +166,8 @@ export default function LoginPage() {
             <div>
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full flex justify-center items-center gap-2 py-3 px-4 rounded-xl shadow-sm text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-60 transition-all"
+                disabled={loading || demoLoading}
+                className="w-full flex justify-center items-center gap-2 py-3 px-4 rounded-xl shadow-sm text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 disabled:opacity-60 transition-all"
               >
                 {loading ? (
                   <>
