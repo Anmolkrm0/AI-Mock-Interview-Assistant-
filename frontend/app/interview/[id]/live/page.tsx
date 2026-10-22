@@ -23,6 +23,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { getAuthToken } from "@/services/api";
 
 interface QuestionData {
   id: string;
@@ -106,8 +107,13 @@ export default function LiveInterviewPage() {
     let ws: WebSocket | null = null;
 
     async function connectWebSocket() {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token || "";
+      let token = "";
+      try {
+        const resolved = await getAuthToken();
+        if (resolved) token = resolved;
+      } catch (err) {
+        console.warn("Could not retrieve auth token:", err);
+      }
 
       const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const host = process.env.NEXT_PUBLIC_WS_URL || `${wsProtocol}//${window.location.hostname}:8000/api/v1`;
@@ -167,7 +173,8 @@ export default function LiveInterviewPage() {
           } else if (payload.type === "interview_finalized") {
             router.push(`/interview/${interviewId}/processing`);
           } else if (payload.type === "error") {
-            setErrorMsg(payload.message);
+            setErrorMsg(payload.message || "Interviewer session error");
+            setConnectionStatus("disconnected");
           }
         } catch (e) {
           console.error("Failed to parse websocket message:", e);
@@ -179,8 +186,11 @@ export default function LiveInterviewPage() {
         setErrorMsg("WebSocket connection error. Retrying...");
       };
 
-      ws.onclose = () => {
+      ws.onclose = (e) => {
         setConnectionStatus("disconnected");
+        if (e.reason) {
+          setErrorMsg(e.reason);
+        }
       };
     }
 
@@ -360,17 +370,47 @@ export default function LiveInterviewPage() {
         <div className="lg:col-span-7 p-6 flex flex-col justify-between border-r border-slate-800 overflow-y-auto">
           {/* Current Question Display */}
           <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-6 shadow-lg mb-6">
+            {errorMsg && (
+              <div className="p-3 mb-4 rounded-xl bg-rose-950/60 border border-rose-800/80 text-rose-200 text-xs flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{errorMsg}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErrorMsg(null);
+                    setConnectionStatus("connecting");
+                    window.location.reload();
+                  }}
+                  className="px-2.5 py-1 bg-rose-700 hover:bg-rose-600 text-white rounded-lg text-xs font-semibold shrink-0 transition"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
-                Current Question • {currentQuestion?.competency || "System Design"}
+                Current Question • {currentQuestion?.competency || (errorMsg ? "Connection Error" : "System Design")}
               </span>
               <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-700 text-slate-300">
                 {currentQuestion?.difficulty || "Medium"}
               </span>
             </div>
-            <p className="text-lg font-semibold text-white leading-relaxed">
-              {currentQuestion?.text || "Connecting to interviewer..."}
-            </p>
+            <div className="text-lg font-semibold text-white leading-relaxed">
+              {currentQuestion?.text ? (
+                currentQuestion.text
+              ) : errorMsg ? (
+                <span className="text-rose-300 font-normal text-sm">
+                  Unable to connect to the live interview session. Please click Retry above to reconnect.
+                </span>
+              ) : (
+                <div className="flex items-center gap-3 text-slate-300">
+                  <Loader2 className="w-5 h-5 animate-spin text-blue-400" />
+                  <span>Connecting to interviewer...</span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Video / AI Persona Feed */}

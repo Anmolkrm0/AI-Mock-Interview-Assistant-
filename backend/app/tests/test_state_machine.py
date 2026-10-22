@@ -60,6 +60,31 @@ def test_valid_state_transitions():
     assert interview.status == "completed"
 
 
+def test_ready_to_in_progress_direct_transition():
+    db = TestingSessionLocal()
+    user_id = uuid.uuid4()
+    profile = Profile(id=user_id, display_name="Direct Start Candidate")
+    db.add(profile)
+
+    interview = Interview(
+        user_id=user_id,
+        job_role="Staff Systems Architect",
+        duration_minutes=45,
+        status="ready",
+    )
+    db.add(interview)
+    db.commit()
+
+    # ready -> in_progress directly (e.g. WebSocket connection opens)
+    interview = transition_interview_state(interview, "in_progress", db)
+    assert interview.status == "in_progress"
+    assert interview.started_at is not None
+
+    # Idempotent transition when in_progress connects again
+    interview = transition_interview_state(interview, "in_progress", db)
+    assert interview.status == "in_progress"
+
+
 def test_illegal_state_transition_raises_400():
     db = TestingSessionLocal()
     user_id = uuid.uuid4()

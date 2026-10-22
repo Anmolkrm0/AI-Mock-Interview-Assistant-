@@ -11,9 +11,9 @@ from backend.app.models.models import Interview, Question, AnswerAttempt, Interv
 ALLOWED_TRANSITIONS = {
     "created": ["preparing", "ready", "cancelled", "failed"],
     "preparing": ["ready", "failed", "cancelled"],
-    "ready": ["connecting", "cancelled", "failed"],
+    "ready": ["connecting", "in_progress", "cancelled", "failed"],
     "connecting": ["in_progress", "failed", "cancelled"],
-    "in_progress": ["paused", "finalizing", "failed", "cancelled"],
+    "in_progress": ["in_progress", "paused", "finalizing", "failed", "cancelled"],
     "paused": ["in_progress", "finalizing", "failed", "cancelled"],
     "finalizing": ["evaluating", "failed"],
     "evaluating": ["completed", "failed"],

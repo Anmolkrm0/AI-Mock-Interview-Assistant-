@@ -35,7 +35,14 @@ async def generate_interview_plan(
         try:
             client = genai.Client(api_key=settings.GEMINI_API_KEY)
             prompt = f"""
-You are an expert Principal Engineer and Lead Interviewer creating an authoritative interview plan.
+You are an elite Executive Interview Coach and Principal Bar Raiser adhering to the Interview Coach Standard:
+1. Sequencing: Enforce one-question-at-a-time focus. Each question evaluates a distinct technical competency without compound questions.
+2. Triage Before Template: Tailor questions dynamically to the role ({job_role}), candidate context, and job requirements.
+3. Track-Aware Rigor:
+   - For Engineering/Architecture: System boundaries, high-throughput data pipelines, failure modes, CAP trade-offs, and zero-downtime operations.
+   - For Technical Product / TPM: Prioritization trade-offs, telemetry metrics, technical feasibility, and cross-functional incident leadership.
+4. Expected Evidence: Define concrete STAR signals (Situation, Task, Action, Measurable Result) that distinguish strong hires.
+
 Role: {job_role}
 Duration: {duration_minutes} minutes
 Evaluation Rigor: {evaluation_rigor}
@@ -47,16 +54,18 @@ Candidate Profile Context:
 Job Description Requirements:
 {json.dumps(job_description or {}, indent=2)[:3000]}
 
-Guidelines:
-1. Provide exactly {target_count} ordered questions that thoroughly assess technical competency, architecture, and problem-solving for this specific role.
-2. For each question, detail:
-   - competency: the exact competency tested
-   - difficulty: Easy, Medium, Hard, or Staff (adjust for rigor: {evaluation_rigor})
-   - question_type: technical, architectural, behavioral, or trade_off
-   - expected_evidence: explicit concrete technical signals that demonstrate a strong hire
-   - suggested_follow_ups: 2-3 adaptive probing questions
-   - time_allocation_minutes: estimated time for this turn
-3. Do NOT repeat questions. Start with a foundational inquiry and escalate into architectural trade-offs.
+Requirements:
+- Provide exactly {target_count} ordered questions.
+- For each question provide:
+  * id: 1-indexed sequence number
+  * question_text: clear, focused question
+  * competency: specific capability tested
+  * difficulty: Easy, Medium, Hard, or Staff (aligned with {evaluation_rigor})
+  * question_type: technical, architectural, behavioral, or trade_off
+  * expected_evidence: explicit concrete technical & STAR signals demonstrating mastery
+  * suggested_follow_ups: 2-3 adaptive probing questions
+  * time_allocation_minutes: estimated time for this turn
+- Set competency_weights as a list of items with competency and weight (summing to ~1.0).
 """
             response = await client.aio.models.generate_content(
                 model=settings.GEMINI_TEXT_MODEL,

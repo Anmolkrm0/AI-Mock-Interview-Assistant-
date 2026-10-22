@@ -3,6 +3,11 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 
 
+class CompetencyWeight(BaseModel):
+    competency: str = Field(..., description="Specific competency evaluated")
+    weight: float = Field(..., description="Weight multiplier (e.g. 1.0, 1.5)")
+
+
 class PlannedQuestion(BaseModel):
     id: int = Field(..., description="1-indexed sequence identifier")
     question_text: str = Field(..., description="The interview question text")
@@ -26,5 +31,5 @@ class InterviewPlanResponse(BaseModel):
     interview_objectives: List[str] = Field(default_factory=list)
     questions: List[PlannedQuestion] = Field(..., min_length=2)
     total_estimated_minutes: int
-    competency_weights: Dict[str, float] = Field(default_factory=dict)
+    competency_weights: List[CompetencyWeight] = Field(default_factory=list)
 

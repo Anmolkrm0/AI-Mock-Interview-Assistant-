@@ -33,7 +33,7 @@ class LiveInterviewSessionManager:
             await self.ws.close(code=1008, reason="Interview not found")
             return False
 
-        # Transition state: connecting -> in_progress
+        # Transition state: connecting/ready -> in_progress
         if self.interview.status in ("ready", "connecting"):
             transition_interview_state(self.interview, "in_progress", self.db)
 
@@ -45,16 +45,33 @@ class LiveInterviewSessionManager:
             .all()
         )
 
+        # Resume at the first unanswered question if candidate reconnected
+        answered_q_ids = {
+            a.question_id
+            for a in self.db.query(AnswerAttempt.question_id)
+            .filter(AnswerAttempt.selected_for_evaluation == True)
+            .all()
+        }
+        for idx, q in enumerate(self.questions):
+            if q.id not in answered_q_ids:
+                self.current_question_index = idx
+                break
+        else:
+            self.current_question_index = max(0, len(self.questions) - 1) if self.questions else 0
+
         # Calculate remaining duration
         now = datetime.now(timezone.utc)
         remaining_seconds = 0
         if self.interview.deadline_at:
-            remaining_seconds = max(0, int((self.interview.deadline_at - now).total_seconds()))
+            deadline = self.interview.deadline_at
+            if deadline.tzinfo is None:
+                deadline = deadline.replace(tzinfo=timezone.utc)
+            remaining_seconds = max(0, int((deadline - now).total_seconds()))
         else:
             remaining_seconds = self.interview.duration_minutes * 60
 
         # Send session initialization payload
-        first_q = self.questions[0] if self.questions else None
+        curr_q = self.questions[self.current_question_index] if self.questions else None
         await self.ws.send_json({
             "type": "session_init",
             "interview_id": str(self.interview_id),
@@ -64,15 +81,15 @@ class LiveInterviewSessionManager:
             "duration_minutes": self.interview.duration_minutes,
             "remaining_seconds": remaining_seconds,
             "total_questions": len(self.questions),
-            "current_question_index": 0,
+            "current_question_index": self.current_question_index,
             "current_question": {
-                "id": str(first_q.id) if first_q else None,
-                "sequence": first_q.sequence_number if first_q else 1,
-                "text": first_q.question_text if first_q else "Welcome to your mock interview.",
-                "competency": first_q.competency if first_q else "Intro",
-                "difficulty": first_q.difficulty if first_q else "Medium",
-            } if first_q else None,
-            "welcome_message": f"Hello! Welcome to your mock interview for the {self.interview.job_role} position. I will guide you through {len(self.questions)} targeted questions.",
+                "id": str(curr_q.id) if curr_q else None,
+                "sequence": curr_q.sequence_number if curr_q else 1,
+                "text": curr_q.question_text if curr_q else "Welcome to your mock interview.",
+                "competency": curr_q.competency if curr_q else "Intro",
+                "difficulty": curr_q.difficulty if curr_q else "Medium",
+            } if curr_q else None,
+            "welcome_message": f"Welcome! I am your AI Executive Interview Coach. We will go one question at a time to examine your engineering depth, architectural trade-offs, and quantifiable results for the {self.interview.job_role} role. Take your time, structure your thoughts, and let's begin.",
         })
         return True
 
@@ -97,7 +114,10 @@ class LiveInterviewSessionManager:
                     payload={"question_id": str(curr_q.id), "length": len(transcript)},
                     db=self.db,
                 )
-                await self.advance_to_next_question(ack_prefix="Thank you for that response.")
+                prev_comp = curr_q.competency
+                await self.advance_to_next_question(
+                    ack_prefix=f"Strong breakdown on {prev_comp}. Let's build on that."
+                )
 
         elif msg_type == "voice_answer_complete":
             # Candidate finished speaking their answer
@@ -117,7 +137,10 @@ class LiveInterviewSessionManager:
                     payload={"question_id": str(curr_q.id)},
                     db=self.db,
                 )
-                await self.advance_to_next_question(ack_prefix="Understood. Let's move to the next topic.")
+                prev_comp = curr_q.competency
+                await self.advance_to_next_question(
+                    ack_prefix=f"Understood. Great articulation on {prev_comp}. Moving to the next technical dimension."
+                )
 
         elif msg_type == "skip_question":
             # Candidate chose to skip question
@@ -136,7 +159,9 @@ class LiveInterviewSessionManager:
                     payload={"question_id": str(curr_q.id)},
                     db=self.db,
                 )
-                await self.advance_to_next_question(ack_prefix="No problem, skipping that question.")
+                await self.advance_to_next_question(
+                    ack_prefix="No problem at all. In live interviews, knowing when to pivot preserves valuable time. Let's tackle the next area."
+                )
 
         elif msg_type == "retake_answer":
             # Candidate requests to retake current question

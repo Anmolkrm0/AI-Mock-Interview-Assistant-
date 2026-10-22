@@ -85,7 +85,11 @@ async def evaluate_interview_session(interview_id: uuid.UUID, db: Session) -> Re
 
     weights = {}
     if interview.plan and "competency_weights" in interview.plan.plan_json:
-        weights = interview.plan.plan_json["competency_weights"]
+        raw_weights = interview.plan.plan_json["competency_weights"]
+        if isinstance(raw_weights, list):
+            weights = {item["competency"]: float(item["weight"]) for item in raw_weights if isinstance(item, dict) and "competency" in item}
+        elif isinstance(raw_weights, dict):
+            weights = {k: float(v) for k, v in raw_weights.items()}
 
     # 2. Evaluate with Gemini if API Key is configured
     report_dict: Optional[Dict[str, Any]] = None
@@ -94,8 +98,12 @@ async def evaluate_interview_session(interview_id: uuid.UUID, db: Session) -> Re
         try:
             client = genai.Client(api_key=settings.GEMINI_API_KEY)
             prompt = f"""
-You are an expert Hiring Committee Principal Engineer and Bar Raiser.
-Evaluate the candidate's interview performance for:
+You are an expert Executive Interview Coach and Principal Bar Raiser adhering to the Interview Coach Standard:
+1. Evidence-Tagged Claims Only: Ground every score in observed candidate transcript statements. Distinguish candidate evidence from your interpretation.
+2. Strengths First, Then Gaps: Acknowledge what the candidate demonstrated well before breaking down technical gaps.
+3. Model STAR Upgrades: For each question evaluation, provide a concrete, high-signal model response upgrade using the STAR framework (Situation, Task, Action, Measurable Result).
+4. Prescriptive Action Plan: In recommendations, specify explicit, high-leverage practice drills (e.g., 'Conduct 15-min practice drill on distributed consensus failure recovery').
+
 Role: {interview.job_role}
 Evaluation Rigor: {interview.evaluation_rigor}
 
@@ -105,16 +113,18 @@ Question and Candidate Transcript Data:
 Rubric (1-5 Scale per question):
 1: Insufficient evidence or incorrect
 2: Significant gaps or missing essential trade-offs
-3: Competent; meets hiring bar but incomplete
-4: Strong and well-supported with concrete examples
+3: Competent; meets hiring bar but lacks depth
+4: Strong and well-supported with concrete architectural trade-offs
 5: Exceptional; principal/staff caliber architectural mastery
 
 Requirements:
-1. Score each answered question from 1.0 to 5.0. Exclude skipped questions from scoring.
-2. Quote exact excerpts from candidate answers.
-3. Compute competency_scores per competency.
-4. Calculate realistic overall_score (0-100).
-5. Highlight top strengths and improvement areas with actionable recommendations.
+1. Score each answered question from 1.0 to 5.0. Exclude skipped questions from answer scoring.
+2. candidate_quote: Quote exact or representative phrases from the candidate's answer.
+3. rationale: Distinguish demonstrated evidence from missing depth.
+4. model_upgrade: Concrete STAR model answer demonstration.
+5. Compute competency_scores per competency (0-100).
+6. Calculate realistic overall_score (0-100).
+7. Strengths first, then improvement areas, followed by prescriptive practice recommendations.
 """
             response = await client.aio.models.generate_content(
                 model=settings.GEMINI_TEXT_MODEL,

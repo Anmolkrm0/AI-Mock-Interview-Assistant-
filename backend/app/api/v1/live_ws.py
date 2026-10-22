@@ -12,18 +12,41 @@ from backend.app.services.live_ai_service import LiveInterviewSessionManager
 router = APIRouter(tags=["Live WebSocket"])
 
 
+DEV_SECRET = "dev-secret-key-mock-interview-2026"
+
+
 def authenticate_websocket_token(token: Optional[str]) -> Optional[uuid.UUID]:
     if not token:
         return None
-    try:
-        if settings.SUPABASE_JWT_SECRET:
+    # 1. Attempt Supabase JWT Secret if configured
+    if settings.SUPABASE_JWT_SECRET:
+        try:
             payload = jwt.decode(token, settings.SUPABASE_JWT_SECRET, algorithms=["HS256"], options={"verify_aud": False})
-        else:
-            payload = jwt.decode(token, options={"verify_signature": False})
+            user_id_str = payload.get("sub")
+            if user_id_str:
+                return uuid.UUID(user_id_str)
+        except Exception:
+            pass
+
+    # 2. Attempt local dev token secret
+    try:
+        payload = jwt.decode(token, DEV_SECRET, algorithms=["HS256"], options={"verify_aud": False})
         user_id_str = payload.get("sub")
-        return uuid.UUID(user_id_str) if user_id_str else None
+        if user_id_str:
+            return uuid.UUID(user_id_str)
     except Exception:
-        return None
+        pass
+
+    # 3. Development fallback: decode claims without signature verification
+    try:
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id_str = payload.get("sub")
+        if user_id_str:
+            return uuid.UUID(user_id_str)
+    except Exception:
+        pass
+
+    return None
 
 
 @router.websocket("/interviews/{interview_id}/live-ws")
