@@ -90,9 +90,17 @@ export default function LiveInterviewPage() {
   // Confirm End Modal
   const [showEndModal, setShowEndModal] = useState(false);
 
-  // 1. Initialize Camera & Microphone with resilient fallbacks
+  // Active stream reference for unmount cleanup
+  const activeStreamRef = useRef<MediaStream | null>(null);
+
+  // 1. Initialize Camera & Microphone with resilient universal fallbacks
   const requestCameraAccess = async () => {
     try {
+      if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+        console.warn("getUserMedia is not supported on this browser/environment.");
+        return null;
+      }
+
       let localStream: MediaStream | null = null;
       try {
         localStream = await navigator.mediaDevices.getUserMedia({
@@ -116,6 +124,7 @@ export default function LiveInterviewPage() {
       }
 
       if (localStream) {
+        activeStreamRef.current = localStream;
         setStream(localStream);
         setIsVideoOff(false);
         if (videoRef.current) {
@@ -132,16 +141,9 @@ export default function LiveInterviewPage() {
   };
 
   useEffect(() => {
-    let active = true;
-
-    requestCameraAccess().then((s) => {
-      if (!active && s) {
-        s.getTracks().forEach((t) => t.stop());
-      }
-    });
-
+    requestCameraAccess();
     return () => {
-      active = false;
+      // Do not prematurely terminate tracks during React StrictMode mount/remount
     };
   }, []);
 
@@ -180,18 +182,26 @@ export default function LiveInterviewPage() {
   const speechSafetyTimerRef = useRef<any>(null);
   const pendingSpeechTextRef = useRef<string | null>(null);
 
-  // Auto-unlock speech synthesis on initial user gesture anywhere on window
-  useEffect(() => {
-    const unlockSpeechAndMedia = () => {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        if (window.speechSynthesis.paused) {
+  // Auto-unlock audio and speech synthesis on initial user gesture anywhere on window
+  const unlockSpeechAndMedia = () => {
+    if (typeof window !== "undefined") {
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) {
+          const ctx = new AudioCtx();
+          if (ctx.state === "suspended") ctx.resume();
+        }
+        if ("speechSynthesis" in window) {
           window.speechSynthesis.resume();
+          if (pendingSpeechTextRef.current && !isSpeakingRef.current) {
+            speakText(pendingSpeechTextRef.current);
+          }
         }
-        if (pendingSpeechTextRef.current && !isSpeakingRef.current) {
-          speakText(pendingSpeechTextRef.current);
-        }
-      }
-    };
+      } catch (e) {}
+    }
+  };
+
+  useEffect(() => {
     window.addEventListener("click", unlockSpeechAndMedia);
     window.addEventListener("keydown", unlockSpeechAndMedia);
     window.addEventListener("touchstart", unlockSpeechAndMedia);
@@ -205,6 +215,7 @@ export default function LiveInterviewPage() {
   const stopSpeakingAndStartListening = () => {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
+      window.speechSynthesis.resume();
     }
     if (speechSafetyTimerRef.current) {
       clearTimeout(speechSafetyTimerRef.current);
@@ -217,22 +228,20 @@ export default function LiveInterviewPage() {
     setIsSpeaking(false);
     isSpeakingRef.current = false;
     pendingSpeechTextRef.current = null;
-    if (!isMicMutedRef.current && !isTextModeRef.current) {
-      startListening();
-    }
+    startListening();
   };
 
   const speakText = (text: string, onEnd?: () => void) => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       if (onEnd) onEnd();
-      if (!isMicMutedRef.current && !isTextModeRef.current) {
-        startListening();
-      }
+      startListening();
       return;
     }
 
     try {
       window.speechSynthesis.cancel();
+      window.speechSynthesis.resume();
+
       if (speechKeepAliveRef.current) {
         clearInterval(speechKeepAliveRef.current);
         speechKeepAliveRef.current = null;
@@ -241,14 +250,11 @@ export default function LiveInterviewPage() {
         clearTimeout(speechSafetyTimerRef.current);
         speechSafetyTimerRef.current = null;
       }
-      stopListening();
 
       const cleanText = text.replace(/[*_#`~[\]]/g, " ").replace(/\s+/g, " ").trim();
       if (!cleanText) {
         if (onEnd) onEnd();
-        if (!isMicMutedRef.current && !isTextModeRef.current) {
-          startListening();
-        }
+        startListening();
         return;
       }
 
@@ -256,24 +262,29 @@ export default function LiveInterviewPage() {
 
       const utterance = new SpeechSynthesisUtterance(cleanText);
       activeUtteranceRef.current = utterance;
+      // Retain reference on window to prevent macOS V8 garbage collection bug
+      (window as any).__activeUtterance = utterance;
+
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
       utterance.lang = "en-US";
 
       const voices = window.speechSynthesis.getVoices();
-      const preferred = voices.find(
-        (v) =>
-          v.lang.startsWith("en") &&
-          (v.name.includes("Google") ||
-            v.name.includes("Natural") ||
-            v.name.includes("Samantha") ||
-            v.name.includes("Daniel") ||
-            v.name.includes("Karen") ||
-            v.name.includes("Alex"))
-      ) || voices.find((v) => v.lang.startsWith("en"));
+      if (voices && voices.length > 0) {
+        const preferred = voices.find(
+          (v) =>
+            v.lang.startsWith("en") &&
+            (v.name.includes("Google") ||
+              v.name.includes("Natural") ||
+              v.name.includes("Samantha") ||
+              v.name.includes("Daniel") ||
+              v.name.includes("Karen") ||
+              v.name.includes("Alex"))
+        ) || voices.find((v) => v.lang.startsWith("en"));
 
-      if (preferred) {
-        utterance.voice = preferred;
+        if (preferred) {
+          utterance.voice = preferred;
+        }
       }
 
       setIsSpeaking(true);
@@ -291,24 +302,21 @@ export default function LiveInterviewPage() {
         setIsSpeaking(false);
         isSpeakingRef.current = false;
         activeUtteranceRef.current = null;
+        (window as any).__activeUtterance = null;
         pendingSpeechTextRef.current = null;
       };
 
       utterance.onend = () => {
         finishSpeech();
         if (onEnd) onEnd();
-        if (!isMicMutedRef.current && !isTextModeRef.current) {
-          startListening();
-        }
+        startListening();
       };
 
       utterance.onerror = (e) => {
-        console.warn("Speech synthesis error:", e);
+        console.warn("Speech synthesis error event:", e);
         finishSpeech();
         if (onEnd) onEnd();
-        if (!isMicMutedRef.current && !isTextModeRef.current) {
-          startListening();
-        }
+        startListening();
       };
 
       // Workaround for Chrome bug where long utterances freeze
@@ -317,39 +325,33 @@ export default function LiveInterviewPage() {
           window.speechSynthesis.pause();
           window.speechSynthesis.resume();
         }
-      }, 8000);
+      }, 5000);
 
       // Auto-listen safety timer: if speech synthesis is muted, blocked, or stalls, start listening after estimated duration
       const wordCount = cleanText.split(/\s+/).length;
-      const estimatedDurationMs = Math.max(3500, Math.min(14000, wordCount * 360));
+      const estimatedDurationMs = Math.max(3000, Math.min(12000, wordCount * 350));
       speechSafetyTimerRef.current = setTimeout(() => {
         if (isSpeakingRef.current) {
+          console.warn("Speech synthesis safety timeout triggered; unlocking mic");
           finishSpeech();
-          if (!isMicMutedRef.current && !isTextModeRef.current) {
-            startListening();
-          }
+          startListening();
         }
-      }, estimatedDurationMs + 2000);
+      }, estimatedDurationMs);
 
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
       window.speechSynthesis.speak(utterance);
     } catch (err) {
-      console.warn("Speech synthesis failed:", err);
+      console.warn("Speech synthesis failed with error:", err);
       setIsSpeaking(false);
       isSpeakingRef.current = false;
       pendingSpeechTextRef.current = null;
       if (onEnd) onEnd();
-      if (!isMicMutedRef.current && !isTextModeRef.current) {
-        startListening();
-      }
+      startListening();
     }
   };
 
   // 4. Real-time Speech-to-Text Recognition (Transcribes Candidate's Voice Live)
   const initSpeechRecognition = () => {
-    if (typeof window === "undefined" || recognitionRef.current) return;
+    if (typeof window === "undefined") return;
     const SpeechRecognitionClass =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -359,6 +361,12 @@ export default function LiveInterviewPage() {
     }
 
     try {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {}
+      }
+
       const recognition = new SpeechRecognitionClass();
       recognition.continuous = true;
       recognition.interimResults = true;
@@ -392,8 +400,9 @@ export default function LiveInterviewPage() {
         if (event.error !== "no-speech") {
           console.warn("Speech recognition error:", event.error);
         }
-        if (event.error === "not-allowed") {
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
           console.warn("Microphone access not allowed for speech recognition");
+          setSpeechSupported(false);
         }
       };
 
@@ -407,29 +416,40 @@ export default function LiveInterviewPage() {
                 setIsListening(true);
               } catch (e) {}
             }
-          }, 200);
+          }, 250);
         }
       };
 
       recognitionRef.current = recognition;
       setSpeechSupported(true);
+      return recognition;
     } catch (err) {
       console.warn("Failed to init SpeechRecognition:", err);
       setSpeechSupported(false);
+      return null;
     }
   };
 
   const startListening = () => {
-    if (isSpeakingRef.current || isMicMutedRef.current || isTextModeRef.current) {
+    if (isMicMutedRef.current || isTextModeRef.current) {
       return;
     }
+    // Cancel any active speech synthesis so mic recording is clear
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsSpeaking(false);
+    isSpeakingRef.current = false;
+    pendingSpeechTextRef.current = null;
+
     if (!recognitionRef.current) {
       initSpeechRecognition();
     }
-    if (recognitionRef.current) {
+    const rec = recognitionRef.current;
+    if (rec) {
       try {
         isListeningRef.current = true;
-        recognitionRef.current.start();
+        rec.start();
         setIsListening(true);
       } catch (e: any) {
         setIsListening(true);
@@ -884,6 +904,29 @@ export default function LiveInterviewPage() {
         <div className="lg:col-span-7 flex flex-col h-full min-h-0 border-r border-slate-800 overflow-hidden bg-slate-900">
           {/* Scrollable Upper Area */}
           <div className="flex-1 min-h-0 p-4 sm:p-5 flex flex-col gap-3 overflow-y-auto">
+            {/* Camera & Mic Permission Banner if stream not yet connected */}
+            {!stream && (
+              <div className="bg-gradient-to-r from-blue-950/90 to-indigo-950/90 border border-blue-600/60 p-3 rounded-xl shadow-lg flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-2.5 text-xs text-blue-100">
+                  <Sparkles className="w-4 h-4 text-cyan-400 shrink-0 animate-pulse" />
+                  <span>
+                    <strong>Camera &amp; Microphone Setup:</strong> Click to connect your webcam and microphone for auto-speaking and live speech transcription.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await requestCameraAccess();
+                    unlockSpeechAndMedia();
+                    startListening();
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shrink-0 shadow-md transition"
+                >
+                  Enable Camera &amp; Mic
+                </button>
+              </div>
+            )}
+
             {/* Current Question Display */}
             <div className="bg-slate-800/90 border border-slate-700 rounded-xl p-4 shadow-md shrink-0">
               {errorMsg && (
@@ -1032,9 +1075,15 @@ export default function LiveInterviewPage() {
 
               {/* Candidate Local Camera View (Picture-in-Picture) */}
               <div className="absolute bottom-3 right-3 w-40 h-28 sm:w-48 sm:h-32 rounded-xl overflow-hidden border-2 border-slate-700/80 bg-slate-950 shadow-2xl z-10 flex flex-col justify-between">
-                {stream && stream.getVideoTracks().some((t) => t.readyState === "live" && t.enabled) && !isVideoOff ? (
+                {stream && stream.getVideoTracks().length > 0 && !isVideoOff ? (
                   <video
-                    ref={videoRef}
+                    ref={(el) => {
+                      videoRef.current = el;
+                      if (el && stream && el.srcObject !== stream) {
+                        el.srcObject = stream;
+                        el.play().catch((err) => console.warn("Video play error:", err));
+                      }
+                    }}
                     autoPlay
                     playsInline
                     muted
@@ -1059,7 +1108,7 @@ export default function LiveInterviewPage() {
                     <button
                       type="button"
                       onClick={requestCameraAccess}
-                      className="px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-semibold shadow"
+                      className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-semibold shadow"
                     >
                       Enable Camera
                     </button>
@@ -1109,7 +1158,7 @@ export default function LiveInterviewPage() {
                     <button
                       type="button"
                       onClick={startListening}
-                      disabled={isMicMuted || isSpeaking}
+                      disabled={isMicMuted}
                       className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold transition-all shadow-sm shadow-emerald-900/30"
                       title="Click to start transcribing your answer"
                     >

@@ -216,13 +216,20 @@ export default function InterviewSetupPage() {
 
     setIsStarting(true);
 
-    // Prime browser SpeechSynthesis on user gesture to allow autoplay on the next page
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    // Prime browser AudioContext and SpeechSynthesis on user gesture without deadlocking queue
+    if (typeof window !== "undefined") {
       try {
-        window.speechSynthesis.resume();
-        const silent = new SpeechSynthesisUtterance("");
-        silent.volume = 0;
-        window.speechSynthesis.speak(silent);
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) {
+          const ctx = new AudioCtx();
+          if (ctx.state === "suspended") {
+            ctx.resume();
+          }
+        }
+        if ("speechSynthesis" in window) {
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.resume();
+        }
       } catch (e) {}
     }
 
