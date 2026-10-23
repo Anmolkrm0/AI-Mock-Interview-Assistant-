@@ -216,6 +216,16 @@ export default function InterviewSetupPage() {
 
     setIsStarting(true);
 
+    // Prime browser SpeechSynthesis on user gesture to allow autoplay on the next page
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      try {
+        window.speechSynthesis.resume();
+        const silent = new SpeechSynthesisUtterance("");
+        silent.volume = 0;
+        window.speechSynthesis.speak(silent);
+      } catch (e) {}
+    }
+
     try {
       const cleanRole = selectedRole.trim();
       const currentSeniority = selectedSeniority.trim();

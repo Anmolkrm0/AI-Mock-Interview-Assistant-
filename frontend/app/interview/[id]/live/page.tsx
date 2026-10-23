@@ -91,60 +91,63 @@ export default function LiveInterviewPage() {
   const [showEndModal, setShowEndModal] = useState(false);
 
   // 1. Initialize Camera & Microphone with resilient fallbacks
-  useEffect(() => {
-    let active = true;
-    let localStream: MediaStream | null = null;
-
-    async function setupMedia() {
+  const requestCameraAccess = async () => {
+    try {
+      let localStream: MediaStream | null = null;
       try {
         localStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "user",
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-          },
+          video: { width: { ideal: 640 }, height: { ideal: 480 } },
           audio: true,
         });
-        if (!active) {
-          localStream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        setStream(localStream);
-      } catch (err: any) {
-        console.warn("Combined video+audio access failed, trying separate:", err);
+      } catch (firstErr) {
+        console.warn("Standard video+audio request failed, trying basic constraints:", firstErr);
         try {
-          const videoStream = await navigator.mediaDevices.getUserMedia({ video: true }).catch(() => null);
-          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
-          if (!active) {
-            videoStream?.getTracks().forEach((t) => t.stop());
-            audioStream?.getTracks().forEach((t) => t.stop());
-            return;
+          localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        } catch (secondErr) {
+          console.warn("Combined stream failed, trying individual tracks:", secondErr);
+          const vStream = await navigator.mediaDevices.getUserMedia({ video: true }).catch(() => null);
+          const aStream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
+          if (vStream || aStream) {
+            localStream = new MediaStream();
+            vStream?.getVideoTracks().forEach((t) => localStream!.addTrack(t));
+            aStream?.getAudioTracks().forEach((t) => localStream!.addTrack(t));
           }
-          if (videoStream || audioStream) {
-            const combined = new MediaStream();
-            videoStream?.getVideoTracks().forEach((t) => combined.addTrack(t));
-            audioStream?.getAudioTracks().forEach((t) => combined.addTrack(t));
-            setStream(combined);
-          }
-        } catch (err2) {
-          console.warn("Individual camera/audio fallback failed:", err2);
         }
       }
-    }
 
-    setupMedia();
+      if (localStream) {
+        setStream(localStream);
+        setIsVideoOff(false);
+        if (videoRef.current) {
+          videoRef.current.srcObject = localStream;
+          videoRef.current.play().catch((err) => console.warn("Video play error:", err));
+        }
+        return localStream;
+      }
+      return null;
+    } catch (err) {
+      console.warn("Camera & mic initialization error:", err);
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+
+    requestCameraAccess().then((s) => {
+      if (!active && s) {
+        s.getTracks().forEach((t) => t.stop());
+      }
+    });
 
     return () => {
       active = false;
-      if (localStream) {
-        localStream.getTracks().forEach((t) => t.stop());
-      }
     };
   }, []);
 
   // Ensure <video> element always attaches stream when available
   useEffect(() => {
-    if (videoRef.current && stream && !isVideoOff) {
+    if (videoRef.current && stream && !isVideoOff && stream.getVideoTracks().length > 0) {
       videoRef.current.srcObject = stream;
       videoRef.current.play().catch((err) => {
         console.warn("Camera video play error:", err);
@@ -174,27 +177,57 @@ export default function LiveInterviewPage() {
   // 3. Audio Speech Synthesis (AI Interviewer Speaks Question)
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const speechKeepAliveRef = useRef<any>(null);
+  const speechSafetyTimerRef = useRef<any>(null);
+  const pendingSpeechTextRef = useRef<string | null>(null);
 
   // Auto-unlock speech synthesis on initial user gesture anywhere on window
   useEffect(() => {
-    const unlockSpeech = () => {
+    const unlockSpeechAndMedia = () => {
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         if (window.speechSynthesis.paused) {
           window.speechSynthesis.resume();
         }
+        if (pendingSpeechTextRef.current && !isSpeakingRef.current) {
+          speakText(pendingSpeechTextRef.current);
+        }
       }
     };
-    window.addEventListener("click", unlockSpeech);
-    window.addEventListener("touchstart", unlockSpeech);
+    window.addEventListener("click", unlockSpeechAndMedia);
+    window.addEventListener("keydown", unlockSpeechAndMedia);
+    window.addEventListener("touchstart", unlockSpeechAndMedia);
     return () => {
-      window.removeEventListener("click", unlockSpeech);
-      window.removeEventListener("touchstart", unlockSpeech);
+      window.removeEventListener("click", unlockSpeechAndMedia);
+      window.removeEventListener("keydown", unlockSpeechAndMedia);
+      window.removeEventListener("touchstart", unlockSpeechAndMedia);
     };
   }, []);
+
+  const stopSpeakingAndStartListening = () => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+    if (speechSafetyTimerRef.current) {
+      clearTimeout(speechSafetyTimerRef.current);
+      speechSafetyTimerRef.current = null;
+    }
+    if (speechKeepAliveRef.current) {
+      clearInterval(speechKeepAliveRef.current);
+      speechKeepAliveRef.current = null;
+    }
+    setIsSpeaking(false);
+    isSpeakingRef.current = false;
+    pendingSpeechTextRef.current = null;
+    if (!isMicMutedRef.current && !isTextModeRef.current) {
+      startListening();
+    }
+  };
 
   const speakText = (text: string, onEnd?: () => void) => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       if (onEnd) onEnd();
+      if (!isMicMutedRef.current && !isTextModeRef.current) {
+        startListening();
+      }
       return;
     }
 
@@ -204,17 +237,26 @@ export default function LiveInterviewPage() {
         clearInterval(speechKeepAliveRef.current);
         speechKeepAliveRef.current = null;
       }
+      if (speechSafetyTimerRef.current) {
+        clearTimeout(speechSafetyTimerRef.current);
+        speechSafetyTimerRef.current = null;
+      }
       stopListening();
 
       const cleanText = text.replace(/[*_#`~[\]]/g, " ").replace(/\s+/g, " ").trim();
       if (!cleanText) {
         if (onEnd) onEnd();
+        if (!isMicMutedRef.current && !isTextModeRef.current) {
+          startListening();
+        }
         return;
       }
 
+      pendingSpeechTextRef.current = cleanText;
+
       const utterance = new SpeechSynthesisUtterance(cleanText);
       activeUtteranceRef.current = utterance;
-      utterance.rate = 0.98;
+      utterance.rate = 1.0;
       utterance.pitch = 1.0;
       utterance.lang = "en-US";
 
@@ -242,9 +284,14 @@ export default function LiveInterviewPage() {
           clearInterval(speechKeepAliveRef.current);
           speechKeepAliveRef.current = null;
         }
+        if (speechSafetyTimerRef.current) {
+          clearTimeout(speechSafetyTimerRef.current);
+          speechSafetyTimerRef.current = null;
+        }
         setIsSpeaking(false);
         isSpeakingRef.current = false;
         activeUtteranceRef.current = null;
+        pendingSpeechTextRef.current = null;
       };
 
       utterance.onend = () => {
@@ -270,7 +317,19 @@ export default function LiveInterviewPage() {
           window.speechSynthesis.pause();
           window.speechSynthesis.resume();
         }
-      }, 9000);
+      }, 8000);
+
+      // Auto-listen safety timer: if speech synthesis is muted, blocked, or stalls, start listening after estimated duration
+      const wordCount = cleanText.split(/\s+/).length;
+      const estimatedDurationMs = Math.max(3500, Math.min(14000, wordCount * 360));
+      speechSafetyTimerRef.current = setTimeout(() => {
+        if (isSpeakingRef.current) {
+          finishSpeech();
+          if (!isMicMutedRef.current && !isTextModeRef.current) {
+            startListening();
+          }
+        }
+      }, estimatedDurationMs + 2000);
 
       if (window.speechSynthesis.paused) {
         window.speechSynthesis.resume();
@@ -280,6 +339,7 @@ export default function LiveInterviewPage() {
       console.warn("Speech synthesis failed:", err);
       setIsSpeaking(false);
       isSpeakingRef.current = false;
+      pendingSpeechTextRef.current = null;
       if (onEnd) onEnd();
       if (!isMicMutedRef.current && !isTextModeRef.current) {
         startListening();
@@ -332,15 +392,22 @@ export default function LiveInterviewPage() {
         if (event.error !== "no-speech") {
           console.warn("Speech recognition error:", event.error);
         }
+        if (event.error === "not-allowed") {
+          console.warn("Microphone access not allowed for speech recognition");
+        }
       };
 
       recognition.onend = () => {
         setIsListening(false);
         if (isListeningRef.current && !isMicMutedRef.current && !isSpeakingRef.current && !isTextModeRef.current) {
-          try {
-            recognition.start();
-            setIsListening(true);
-          } catch (e) {}
+          setTimeout(() => {
+            if (isListeningRef.current && !isSpeakingRef.current && !isMicMutedRef.current) {
+              try {
+                recognition.start();
+                setIsListening(true);
+              } catch (e) {}
+            }
+          }, 200);
         }
       };
 
@@ -364,8 +431,15 @@ export default function LiveInterviewPage() {
         isListeningRef.current = true;
         recognitionRef.current.start();
         setIsListening(true);
-      } catch (e) {
+      } catch (e: any) {
         setIsListening(true);
+        setTimeout(() => {
+          try {
+            if (isListeningRef.current && recognitionRef.current) {
+              recognitionRef.current.start();
+            }
+          } catch (err) {}
+        }, 200);
       }
     }
   };
@@ -387,7 +461,10 @@ export default function LiveInterviewPage() {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.getVoices();
       window.speechSynthesis.onvoiceschanged = () => {
-        window.speechSynthesis.getVoices();
+        const voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0 && pendingSpeechTextRef.current && !isSpeakingRef.current) {
+          speakText(pendingSpeechTextRef.current);
+        }
       };
     }
 
@@ -396,6 +473,12 @@ export default function LiveInterviewPage() {
     return () => {
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
+      }
+      if (speechKeepAliveRef.current) {
+        clearInterval(speechKeepAliveRef.current);
+      }
+      if (speechSafetyTimerRef.current) {
+        clearTimeout(speechSafetyTimerRef.current);
       }
       if (recognitionRef.current) {
         try {
@@ -586,36 +669,72 @@ export default function LiveInterviewPage() {
   };
 
   const toggleVideo = async () => {
-    if (!stream) {
-      try {
-        const newStream = await navigator.mediaDevices
-          .getUserMedia({
-            video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-            audio: true,
-          })
-          .catch(() => navigator.mediaDevices.getUserMedia({ video: true }));
-        setStream(newStream);
-        setIsVideoOff(false);
-      } catch (e) {
-        console.warn("Could not enable camera:", e);
-      }
+    if (!stream || stream.getVideoTracks().length === 0) {
+      await requestCameraAccess();
       return;
     }
     const tracks = stream.getVideoTracks();
-    if (tracks.length === 0) {
-      try {
-        const vStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        vStream.getVideoTracks().forEach((t) => stream.addTrack(t));
-        setIsVideoOff(false);
-      } catch (e) {
-        console.warn("Could not add video track:", e);
-      }
-    } else {
-      tracks.forEach((track) => {
-        track.enabled = isVideoOff;
-      });
-      setIsVideoOff(!isVideoOff);
+    const nextVideoState = !isVideoOff;
+    tracks.forEach((track) => {
+      track.enabled = !nextVideoState;
+    });
+    setIsVideoOff(nextVideoState);
+  };
+
+  const handleStopAndSubmit = () => {
+    stopListening();
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
     }
+    if (speechSafetyTimerRef.current) {
+      clearTimeout(speechSafetyTimerRef.current);
+      speechSafetyTimerRef.current = null;
+    }
+    setIsSpeaking(false);
+    isSpeakingRef.current = false;
+    pendingSpeechTextRef.current = null;
+
+    const currentSpoken = `${spokenTranscript} ${interimTranscript}`.trim();
+    const answerToSubmit = currentSpoken || textAnswer.trim();
+
+    if (!answerToSubmit) {
+      alert("Please speak or enter an answer before submitting, or click 'Skip Question'.");
+      return;
+    }
+
+    // Add to local transcript immediately
+    setTranscript((prev) => [
+      ...prev,
+      {
+        id: `ans-${Date.now()}`,
+        sender: "user",
+        text: answerToSubmit,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      },
+    ]);
+
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      if (isTextMode && textAnswer.trim()) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: "text_answer",
+            text: answerToSubmit,
+          })
+        );
+      } else {
+        wsRef.current.send(
+          JSON.stringify({
+            type: "voice_answer_complete",
+            transcript: answerToSubmit,
+          })
+        );
+      }
+    }
+
+    // Reset buffers
+    setSpokenTranscript("");
+    setInterimTranscript("");
+    setTextAnswer("");
   };
 
   const handleSendTextAnswer = () => {
@@ -645,30 +764,7 @@ export default function LiveInterviewPage() {
   };
 
   const handleSendVoiceAnswer = () => {
-    const fullAnswer = `${spokenTranscript} ${interimTranscript}`.trim();
-    if (!fullAnswer || !wsRef.current) return;
-
-    // Add to local transcript immediately
-    setTranscript((prev) => [
-      ...prev,
-      {
-        id: `voice-${Date.now()}`,
-        sender: "user",
-        text: fullAnswer,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      },
-    ]);
-
-    stopListening();
-    wsRef.current.send(
-      JSON.stringify({
-        type: "voice_answer_complete",
-        transcript: fullAnswer,
-      })
-    );
-
-    setSpokenTranscript("");
-    setInterimTranscript("");
+    handleStopAndSubmit();
   };
 
   const handleSkipQuestion = () => {
@@ -817,12 +913,22 @@ export default function LiveInterviewPage() {
                   {currentQuestion && (
                     <button
                       type="button"
-                      onClick={() => speakText(currentQuestion.text)}
-                      className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-xs font-semibold transition-all"
-                      title="Click to hear the interviewer speak this question aloud"
+                      onClick={() => {
+                        if (isSpeaking) {
+                          stopSpeakingAndStartListening();
+                        } else {
+                          speakText(currentQuestion.text);
+                        }
+                      }}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-all border ${
+                        isSpeaking
+                          ? "bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border-amber-500/40 animate-pulse"
+                          : "bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border-blue-500/30"
+                      }`}
+                      title={isSpeaking ? "Click to stop question audio" : "Click to hear the question spoken aloud"}
                     >
-                      <Volume2 className="w-3.5 h-3.5" />
-                      <span>{isSpeaking ? "Speaking..." : "Listen Question"}</span>
+                      {isSpeaking ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                      <span>{isSpeaking ? "Stop Audio" : "Listen Question"}</span>
                     </button>
                   )}
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-700 text-slate-300">
@@ -925,24 +1031,43 @@ export default function LiveInterviewPage() {
               </div>
 
               {/* Candidate Local Camera View (Picture-in-Picture) */}
-              <div className="absolute bottom-3 right-3 w-36 h-24 sm:w-44 sm:h-28 rounded-xl overflow-hidden border-2 border-slate-700/80 bg-slate-950 shadow-2xl z-10 flex flex-col justify-between">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className={`w-full h-full object-cover ${isVideoOff ? "hidden" : ""}`}
-                />
-
-                {isVideoOff && (
+              <div className="absolute bottom-3 right-3 w-40 h-28 sm:w-48 sm:h-32 rounded-xl overflow-hidden border-2 border-slate-700/80 bg-slate-950 shadow-2xl z-10 flex flex-col justify-between">
+                {stream && stream.getVideoTracks().some((t) => t.readyState === "live" && t.enabled) && !isVideoOff ? (
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover"
+                  />
+                ) : isVideoOff ? (
                   <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-2 text-center bg-slate-950">
-                    <User className="w-6 h-6 text-slate-500 mb-1" />
-                    <span className="text-[10px] font-semibold text-slate-400">Camera is Off</span>
+                    <VideoOff className="w-5 h-5 text-slate-500 mb-1" />
+                    <span className="text-[10px] font-semibold text-slate-300">Camera is Off</span>
+                    <button
+                      type="button"
+                      onClick={toggleVideo}
+                      className="mt-1 px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-semibold"
+                    >
+                      Turn On
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-2 text-center bg-slate-950">
+                    <User className="w-5 h-5 text-slate-500 mb-1" />
+                    <span className="text-[10px] font-medium text-slate-400 mb-1">Camera inactive</span>
+                    <button
+                      type="button"
+                      onClick={requestCameraAccess}
+                      className="px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-semibold shadow"
+                    >
+                      Enable Camera
+                    </button>
                   </div>
                 )}
 
                 {/* Candidate Badge */}
-                <div className="absolute bottom-1 left-1 right-1 px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur text-[10px] font-semibold flex items-center justify-between text-slate-300">
+                <div className="absolute bottom-1 left-1 right-1 px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur text-[10px] font-semibold flex items-center justify-between text-slate-300 pointer-events-none">
                   <span className="truncate">You</span>
                   {isMicMuted ? (
                     <MicOff className="w-3 h-3 text-rose-400" />
@@ -1059,17 +1184,17 @@ export default function LiveInterviewPage() {
 
               <div className="mt-2 flex items-center justify-between gap-2">
                 <p className="text-[10px] sm:text-[11px] text-slate-400">
-                  💡 Speak your answer, review the text, and click{" "}
-                  <strong className="text-slate-300">Submit Spoken Answer</strong>.
+                  💡 Speak your answer, review the live text, and click{" "}
+                  <strong className="text-slate-300">Stop &amp; Submit Answer</strong>.
                 </p>
                 <button
                   type="button"
-                  onClick={handleSendVoiceAnswer}
+                  onClick={handleStopAndSubmit}
                   disabled={!(spokenTranscript || interimTranscript).trim()}
-                  className="flex items-center gap-1 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-md shadow-emerald-600/20 shrink-0"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-md shadow-emerald-600/20 shrink-0"
                 >
-                  <Send className="w-3 h-3" />
-                  Submit Spoken Answer
+                  <Send className="w-3.5 h-3.5" />
+                  Stop &amp; Submit Answer
                 </button>
               </div>
             </div>
@@ -1077,6 +1202,7 @@ export default function LiveInterviewPage() {
 
           {/* Pinned Bottom Action Bar (Guaranteed visible at bottom) */}
           <div className="shrink-0 px-4 sm:px-5 py-2.5 border-t border-slate-800 bg-slate-900/95 flex items-center justify-between gap-3 z-20">
+            {/* Left Action Controls */}
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -1103,7 +1229,7 @@ export default function LiveInterviewPage() {
                 title={isVideoOff ? "Turn On Camera" : "Turn Off Camera"}
               >
                 {isVideoOff ? <VideoOff className="w-4 h-4 text-rose-400" /> : <Video className="w-4 h-4 text-blue-400" />}
-                <span>{isVideoOff ? "Camera Off" : "Camera On"}</span>
+                <span>{isVideoOff ? "Turn Camera On" : "Turn Camera Off"}</span>
               </button>
 
               <button
@@ -1120,6 +1246,21 @@ export default function LiveInterviewPage() {
               </button>
             </div>
 
+            {/* Center Action: Prominent Stop & Submit Button */}
+            <div className="flex items-center">
+              <button
+                type="button"
+                onClick={handleStopAndSubmit}
+                disabled={!(spokenTranscript || interimTranscript || textAnswer).trim()}
+                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 disabled:hover:from-emerald-600 disabled:hover:to-teal-600 text-white text-xs sm:text-sm font-bold transition-all shadow-lg shadow-emerald-900/40 ring-1 ring-emerald-400/40 active:scale-95"
+                title="Stop speaking and submit your answer to the interviewer"
+              >
+                <CheckCircle2 className="w-4 h-4 text-white" />
+                <span>Stop &amp; Submit</span>
+              </button>
+            </div>
+
+            {/* Right Action Controls */}
             <div className="flex items-center gap-2">
               <button
                 type="button"
