@@ -93,26 +93,23 @@ export default function LiveInterviewPage() {
   // Active stream reference for unmount cleanup
   const activeStreamRef = useRef<MediaStream | null>(null);
 
-  // 1. Initialize Camera & Microphone with resilient universal fallbacks
+  // 1. FAST, RESILIENT CAMERA & MIC INITIALIZATION
   const requestCameraAccess = async () => {
     try {
       if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-        console.warn("getUserMedia is not supported on this browser/environment.");
+        console.warn("getUserMedia is not supported on this browser.");
         return null;
       }
 
       let localStream: MediaStream | null = null;
       try {
         localStream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 640 }, height: { ideal: 480 } },
+          video: true,
           audio: true,
         });
-      } catch (firstErr) {
-        console.warn("Standard video+audio request failed, trying basic constraints:", firstErr);
+      } catch (err1) {
+        console.warn("Combined getUserMedia failed, trying fallback:", err1);
         try {
-          localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        } catch (secondErr) {
-          console.warn("Combined stream failed, trying individual tracks:", secondErr);
           const vStream = await navigator.mediaDevices.getUserMedia({ video: true }).catch(() => null);
           const aStream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
           if (vStream || aStream) {
@@ -120,6 +117,8 @@ export default function LiveInterviewPage() {
             vStream?.getVideoTracks().forEach((t) => localStream!.addTrack(t));
             aStream?.getAudioTracks().forEach((t) => localStream!.addTrack(t));
           }
+        } catch (err2) {
+          console.warn("Fallback getUserMedia failed:", err2);
         }
       }
 
@@ -127,15 +126,11 @@ export default function LiveInterviewPage() {
         activeStreamRef.current = localStream;
         setStream(localStream);
         setIsVideoOff(false);
-        if (videoRef.current) {
-          videoRef.current.srcObject = localStream;
-          videoRef.current.play().catch((err) => console.warn("Video play error:", err));
-        }
         return localStream;
       }
       return null;
     } catch (err) {
-      console.warn("Camera & mic initialization error:", err);
+      console.warn("Camera request error:", err);
       return null;
     }
   };
@@ -143,21 +138,25 @@ export default function LiveInterviewPage() {
   useEffect(() => {
     requestCameraAccess();
     return () => {
-      // Do not prematurely terminate tracks during React StrictMode mount/remount
+      if (activeStreamRef.current) {
+        activeStreamRef.current.getTracks().forEach((t) => t.stop());
+        activeStreamRef.current = null;
+      }
     };
   }, []);
 
-  // Ensure <video> element always attaches stream when available
+  // Bind video element safely without re-render thrashing
   useEffect(() => {
-    if (videoRef.current && stream && !isVideoOff && stream.getVideoTracks().length > 0) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.play().catch((err) => {
-        console.warn("Camera video play error:", err);
-      });
+    const video = videoRef.current;
+    if (video && stream && !isVideoOff) {
+      if (video.srcObject !== stream) {
+        video.srcObject = stream;
+      }
+      video.play().catch(() => {});
     }
   }, [stream, isVideoOff]);
 
-  // 2. Synchronize configuration refs
+  // Synchronize configuration refs
   useEffect(() => {
     isMicMutedRef.current = isMicMuted;
     if (isMicMuted) {
@@ -176,58 +175,17 @@ export default function LiveInterviewPage() {
     }
   }, [isTextMode]);
 
-  // 3. Audio Speech Synthesis (AI Interviewer Speaks Question)
-  const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const speechKeepAliveRef = useRef<any>(null);
-  const speechSafetyTimerRef = useRef<any>(null);
-  const pendingSpeechTextRef = useRef<string | null>(null);
-
-  // Auto-unlock audio and speech synthesis on initial user gesture anywhere on window
-  const unlockSpeechAndMedia = () => {
-    if (typeof window !== "undefined") {
-      try {
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        if (AudioCtx) {
-          const ctx = new AudioCtx();
-          if (ctx.state === "suspended") ctx.resume();
-        }
-        if ("speechSynthesis" in window) {
-          window.speechSynthesis.resume();
-          if (pendingSpeechTextRef.current && !isSpeakingRef.current) {
-            speakText(pendingSpeechTextRef.current);
-          }
-        }
-      } catch (e) {}
-    }
-  };
-
-  useEffect(() => {
-    window.addEventListener("click", unlockSpeechAndMedia);
-    window.addEventListener("keydown", unlockSpeechAndMedia);
-    window.addEventListener("touchstart", unlockSpeechAndMedia);
-    return () => {
-      window.removeEventListener("click", unlockSpeechAndMedia);
-      window.removeEventListener("keydown", unlockSpeechAndMedia);
-      window.removeEventListener("touchstart", unlockSpeechAndMedia);
-    };
-  }, []);
-
+  // 2. TEXT-TO-SPEECH (CLEAN, SAFE, ZERO LOOPS)
   const stopSpeakingAndStartListening = () => {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
-      window.speechSynthesis.resume();
     }
-    if (speechSafetyTimerRef.current) {
-      clearTimeout(speechSafetyTimerRef.current);
-      speechSafetyTimerRef.current = null;
-    }
-    if (speechKeepAliveRef.current) {
-      clearInterval(speechKeepAliveRef.current);
-      speechKeepAliveRef.current = null;
+    if (ttsTimerRef.current) {
+      clearTimeout(ttsTimerRef.current);
+      ttsTimerRef.current = null;
     }
     setIsSpeaking(false);
     isSpeakingRef.current = false;
-    pendingSpeechTextRef.current = null;
     startListening();
   };
 
@@ -240,15 +198,10 @@ export default function LiveInterviewPage() {
 
     try {
       window.speechSynthesis.cancel();
-      window.speechSynthesis.resume();
 
-      if (speechKeepAliveRef.current) {
-        clearInterval(speechKeepAliveRef.current);
-        speechKeepAliveRef.current = null;
-      }
-      if (speechSafetyTimerRef.current) {
-        clearTimeout(speechSafetyTimerRef.current);
-        speechSafetyTimerRef.current = null;
+      if (ttsTimerRef.current) {
+        clearTimeout(ttsTimerRef.current);
+        ttsTimerRef.current = null;
       }
 
       const cleanText = text.replace(/[*_#`~[\]]/g, " ").replace(/\s+/g, " ").trim();
@@ -258,16 +211,11 @@ export default function LiveInterviewPage() {
         return;
       }
 
-      pendingSpeechTextRef.current = cleanText;
-
       const utterance = new SpeechSynthesisUtterance(cleanText);
-      activeUtteranceRef.current = utterance;
-      // Retain reference on window to prevent macOS V8 garbage collection bug
-      (window as any).__activeUtterance = utterance;
-
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
       utterance.lang = "en-US";
+      (window as any).__currentUtterance = utterance;
 
       const voices = window.speechSynthesis.getVoices();
       if (voices && voices.length > 0) {
@@ -278,86 +226,60 @@ export default function LiveInterviewPage() {
               v.name.includes("Natural") ||
               v.name.includes("Samantha") ||
               v.name.includes("Daniel") ||
-              v.name.includes("Karen") ||
               v.name.includes("Alex"))
         ) || voices.find((v) => v.lang.startsWith("en"));
-
-        if (preferred) {
-          utterance.voice = preferred;
-        }
+        if (preferred) utterance.voice = preferred;
       }
 
       setIsSpeaking(true);
       isSpeakingRef.current = true;
 
-      const finishSpeech = () => {
-        if (speechKeepAliveRef.current) {
-          clearInterval(speechKeepAliveRef.current);
-          speechKeepAliveRef.current = null;
-        }
-        if (speechSafetyTimerRef.current) {
-          clearTimeout(speechSafetyTimerRef.current);
-          speechSafetyTimerRef.current = null;
+      const onDone = () => {
+        if (ttsTimerRef.current) {
+          clearTimeout(ttsTimerRef.current);
+          ttsTimerRef.current = null;
         }
         setIsSpeaking(false);
         isSpeakingRef.current = false;
-        activeUtteranceRef.current = null;
-        (window as any).__activeUtterance = null;
-        pendingSpeechTextRef.current = null;
-      };
-
-      utterance.onend = () => {
-        finishSpeech();
+        (window as any).__currentUtterance = null;
         if (onEnd) onEnd();
         startListening();
       };
 
+      utterance.onend = onDone;
       utterance.onerror = (e) => {
         console.warn("Speech synthesis error event:", e);
-        finishSpeech();
-        if (onEnd) onEnd();
-        startListening();
+        onDone();
       };
 
-      // Workaround for Chrome bug where long utterances freeze
-      speechKeepAliveRef.current = setInterval(() => {
-        if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
-          window.speechSynthesis.pause();
-          window.speechSynthesis.resume();
-        }
-      }, 5000);
-
-      // Auto-listen safety timer: if speech synthesis is muted, blocked, or stalls, start listening after estimated duration
+      // Hard max timeout safety: never allow isSpeaking to stay stuck
       const wordCount = cleanText.split(/\s+/).length;
-      const estimatedDurationMs = Math.max(3000, Math.min(12000, wordCount * 350));
-      speechSafetyTimerRef.current = setTimeout(() => {
+      const maxDuration = Math.max(3000, Math.min(10000, wordCount * 350));
+      ttsTimerRef.current = setTimeout(() => {
         if (isSpeakingRef.current) {
-          console.warn("Speech synthesis safety timeout triggered; unlocking mic");
-          finishSpeech();
-          startListening();
+          onDone();
         }
-      }, estimatedDurationMs);
+      }, maxDuration);
 
       window.speechSynthesis.speak(utterance);
     } catch (err) {
-      console.warn("Speech synthesis failed with error:", err);
+      console.warn("Speech synthesis failed:", err);
       setIsSpeaking(false);
       isSpeakingRef.current = false;
-      pendingSpeechTextRef.current = null;
       if (onEnd) onEnd();
       startListening();
     }
   };
 
-  // 4. Real-time Speech-to-Text Recognition (Transcribes Candidate's Voice Live)
+  // 3. REAL-TIME SPEECH-TO-TEXT (STT)
   const initSpeechRecognition = () => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined") return null;
     const SpeechRecognitionClass =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognitionClass) {
       setSpeechSupported(false);
-      return;
+      return null;
     }
 
     try {
@@ -401,8 +323,9 @@ export default function LiveInterviewPage() {
           console.warn("Speech recognition error:", event.error);
         }
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-          console.warn("Microphone access not allowed for speech recognition");
-          setSpeechSupported(false);
+          console.warn("Microphone access denied or service unavailable for STT");
+          isListeningRef.current = false;
+          setIsListening(false);
         }
       };
 
@@ -410,13 +333,13 @@ export default function LiveInterviewPage() {
         setIsListening(false);
         if (isListeningRef.current && !isMicMutedRef.current && !isSpeakingRef.current && !isTextModeRef.current) {
           setTimeout(() => {
-            if (isListeningRef.current && !isSpeakingRef.current && !isMicMutedRef.current) {
+            if (isListeningRef.current && !isMicMutedRef.current && !isSpeakingRef.current && !isTextModeRef.current) {
               try {
                 recognition.start();
                 setIsListening(true);
               } catch (e) {}
             }
-          }, 250);
+          }, 300);
         }
       };
 
@@ -431,21 +354,18 @@ export default function LiveInterviewPage() {
   };
 
   const startListening = () => {
-    if (isMicMutedRef.current || isTextModeRef.current) {
-      return;
-    }
-    // Cancel any active speech synthesis so mic recording is clear
+    if (isMicMutedRef.current || isTextModeRef.current) return;
+
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
     }
     setIsSpeaking(false);
     isSpeakingRef.current = false;
-    pendingSpeechTextRef.current = null;
 
-    if (!recognitionRef.current) {
-      initSpeechRecognition();
+    let rec = recognitionRef.current;
+    if (!rec) {
+      rec = initSpeechRecognition();
     }
-    const rec = recognitionRef.current;
     if (rec) {
       try {
         isListeningRef.current = true;
@@ -474,31 +394,14 @@ export default function LiveInterviewPage() {
     }
   };
 
-  // 5. Initialize Speech Recognition & Voices on mount
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.getVoices();
-      window.speechSynthesis.onvoiceschanged = () => {
-        const voices = window.speechSynthesis.getVoices();
-        if (voices.length > 0 && pendingSpeechTextRef.current && !isSpeakingRef.current) {
-          speakText(pendingSpeechTextRef.current);
-        }
-      };
-    }
-
     initSpeechRecognition();
-
     return () => {
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
-      if (speechKeepAliveRef.current) {
-        clearInterval(speechKeepAliveRef.current);
-      }
-      if (speechSafetyTimerRef.current) {
-        clearTimeout(speechSafetyTimerRef.current);
+      if (ttsTimerRef.current) {
+        clearTimeout(ttsTimerRef.current);
       }
       if (recognitionRef.current) {
         try {
@@ -508,7 +411,7 @@ export default function LiveInterviewPage() {
     };
   }, []);
 
-  // 6. Initialize WebSocket Connection with cancellation guard
+  // 4. WEBSOCKET CONNECTION
   useEffect(() => {
     let isCancelled = false;
     let ws: WebSocket | null = null;
@@ -540,12 +443,12 @@ export default function LiveInterviewPage() {
         setConnectionStatus("connected");
         setErrorMsg(null);
 
-        // Ping after 2.5s if currentQuestion not received
+        // Ping after 3.5s ONLY if session_init was not received
         pingTimer = setTimeout(() => {
-          if (!isCancelled && ws && ws.readyState === WebSocket.OPEN && !currentQuestion) {
+          if (!isCancelled && ws && ws.readyState === WebSocket.OPEN && !sessionInitReceivedRef.current) {
             ws.send(JSON.stringify({ type: "init_request" }));
           }
-        }, 2500);
+        }, 3500);
       };
 
       ws.onmessage = (event) => {
@@ -554,16 +457,19 @@ export default function LiveInterviewPage() {
           const payload = JSON.parse(event.data);
 
           if (payload.type === "session_init") {
+            sessionInitReceivedRef.current = true;
             setJobRole(payload.job_role);
             setRigor(payload.rigor);
             setRemainingSeconds(payload.remaining_seconds);
             setTotalQuestions(payload.total_questions);
             setQuestionIndex(payload.current_question_index);
+
             if (payload.current_question) {
               setCurrentQuestion(payload.current_question);
               setSpokenTranscript("");
               setInterimTranscript("");
-              // Add AI welcome & question to transcript
+
+              // Set transcript once
               setTranscript([
                 {
                   id: "init-1",
@@ -579,28 +485,34 @@ export default function LiveInterviewPage() {
                 },
               ]);
 
-              // Speak the first question aloud!
               speakText(payload.current_question.text);
             }
           } else if (payload.type === "question_update") {
+            sessionInitReceivedRef.current = true;
             setQuestionIndex(payload.current_question_index);
             setCurrentQuestion(payload.current_question);
             setSpokenTranscript("");
             setInterimTranscript("");
 
-            // Speak the incoming question out loud!
             const speechText = payload.ai_speech_text || payload.current_question.text;
             speakText(speechText);
 
-            setTranscript((prev) => [
-              ...prev,
-              {
-                id: `q-${Date.now()}`,
-                sender: "ai",
-                text: payload.current_question.text,
-                timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-              },
-            ]);
+            // Deduplicate: avoid appending if question text is already the last message
+            setTranscript((prev) => {
+              const last = prev[prev.length - 1];
+              if (last && last.text === payload.current_question.text) {
+                return prev;
+              }
+              return [
+                ...prev,
+                {
+                  id: `q-${Date.now()}`,
+                  sender: "ai",
+                  text: payload.current_question.text,
+                  timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                },
+              ];
+            });
           } else if (payload.type === "retake_acknowledged") {
             setSpokenTranscript("");
             setInterimTranscript("");
@@ -625,16 +537,14 @@ export default function LiveInterviewPage() {
       ws.onerror = (e) => {
         if (!isCancelled) {
           console.error("WebSocket error:", e);
-          setErrorMsg("Connecting to interviewer... Click Reconnect below if taking longer than 5 seconds.");
+          setErrorMsg("Connecting to interviewer... Click Retry if taking longer than 5 seconds.");
         }
       };
 
       ws.onclose = (e) => {
         if (!isCancelled) {
           setConnectionStatus("disconnected");
-          if (e.reason) {
-            setErrorMsg(e.reason);
-          }
+          if (e.reason) setErrorMsg(e.reason);
         }
       };
     }
