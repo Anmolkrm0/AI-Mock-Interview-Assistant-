@@ -42,6 +42,7 @@ You are an elite Executive Interview Coach and Principal Bar Raiser adhering to 
    - For Engineering/Architecture: System boundaries, high-throughput data pipelines, failure modes, CAP trade-offs, and zero-downtime operations.
    - For Technical Product / TPM: Prioritization trade-offs, telemetry metrics, technical feasibility, and cross-functional incident leadership.
 4. Expected Evidence: Define concrete STAR signals (Situation, Task, Action, Measurable Result) that distinguish strong hires.
+5. Relatability & Contextual Anchoring: Explicitly reference and anchor questions in the candidate's actual projects, technologies, and achievements from Candidate Profile Context, bridging them directly to the target Job Description Requirements. Questions must feel relatable, direct, conversational, and authentic.
 
 Role: {job_role}
 Duration: {duration_minutes} minutes
@@ -96,6 +97,15 @@ Requirements:
     jd_competencies = jd.get("competencies", [])
     seniority = jd.get("seniority") or ("Staff" if any(w in job_role.lower() for w in ["staff", "principal", "lead", "director"]) else ("Junior" if "junior" in job_role.lower() else "Senior"))
 
+    # Extract Candidate Profile context for relatable, anchored questioning
+    cand = candidate_profile or {}
+    cand_projects = cand.get("relevant_projects", [])
+    cand_proj1 = cand_projects[0] if cand_projects else None
+    cand_proj1_title = cand_proj1.get("title") if isinstance(cand_proj1, dict) else (getattr(cand_proj1, "title", None) if cand_proj1 else None)
+    cand_proj1_desc = cand_proj1.get("description") if isinstance(cand_proj1, dict) else (getattr(cand_proj1, "description", None) if cand_proj1 else None)
+    cand_skills = cand.get("skills", [])
+    cand_skill_str = ", ".join(cand_skills[:3]) if cand_skills else ""
+
     # Determine skills to feature in questions
     if not jd_skills:
         # Fallback to skills extracted from role name or common technical domains
@@ -129,31 +139,33 @@ Requirements:
     is_devops_sre = any(k in role_lower for k in ["devops", "sre", "site reliability", "infrastructure", "cloud platform"])
     is_data = any(k in role_lower for k in ["data engineer", "data platform", "etl", "big data", "data science"])
 
+    proj_anchor = f" (drawing from your background such as '{cand_proj1_title}')" if cand_proj1_title else ""
+
     generated_questions: List[Dict[str, Any]] = []
 
     # Question 1: System & Technical Breadth / Scoping
     if is_tpm_or_pm:
-        q1_text = f"Can you walk me through how you architected and delivered a complex technical program involving {s1} and {s2} for a {job_role} scope? How did you define system boundaries and map critical path dependencies?"
+        q1_text = f"Can you walk me through how you architected and delivered a complex technical program involving {s1} and {s2} for a {job_role} scope{proj_anchor}? How did you define system boundaries and map critical path dependencies?"
         q1_comp = "Technical Architecture & Program Scoping"
         q1_ev = "Clearly articulates technical system boundaries, multi-team dependencies, critical path sequencing, and architectural trade-offs using STAR."
         q1_followups = ["What was the most critical technical dependency that had the highest risk of delaying the program?", "How did you establish measurable launch milestones with engineering leads?"]
     elif is_ai_ml:
-        q1_text = f"Can you walk me through the end-to-end architecture of a production AI/ML system you designed or scaled using {s1} and {s2}? How did you optimize inference latency, context limits, and throughput?"
+        q1_text = f"Can you walk me through the end-to-end architecture of a production AI/ML system you designed or scaled using {s1} and {s2}{proj_anchor}? How did you optimize inference latency, context limits, and throughput?"
         q1_comp = "AI System Architecture & Model Serving"
         q1_ev = "Explains model serving topology, embedding/retrieval caching, batching trade-offs, and throughput SLAs under high load."
         q1_followups = ["How did you prevent GPU memory fragmentation during peak traffic?", "What was your strategy for measuring and preventing model hallucinations or drift?"]
     elif is_devops_sre:
-        q1_text = f"Can you walk me through how you architected resilient cloud infrastructure and deployment pipelines utilizing {s1} and {s2} for a {job_role} scope?"
+        q1_text = f"Can you walk me through how you architected resilient cloud infrastructure and deployment pipelines utilizing {s1} and {s2} for a {job_role} scope{proj_anchor}?"
         q1_comp = "Infrastructure as Code & Cloud Automation"
         q1_ev = "Detailed explanation of multi-region topology, automated CI/CD rollback safety, and immutable infrastructure practices."
         q1_followups = ["How did you isolate blast radiuses across development and production clusters?", "What telemetry signals did you monitor during canary releases?"]
     elif is_data:
-        q1_text = f"Can you walk me through the architecture of a high-throughput data platform you built using {s1} and {s2}? How did you ensure data consistency, partitioning efficiency, and schema evolution?"
+        q1_text = f"Can you walk me through the architecture of a high-throughput data platform you built using {s1} and {s2}{proj_anchor}? How did you ensure data consistency, partitioning efficiency, and schema evolution?"
         q1_comp = "Data Pipeline Architecture & Stream Processing"
         q1_ev = "Explains stream/batch ingestion boundaries, partition keys, compaction, and schema registry management."
         q1_followups = ["How did you handle late-arriving or out-of-order data events?", "What was your backfill strategy without impacting production consumer latency?"]
     else:
-        q1_text = f"Can you walk me through the architecture of a high-impact system you designed or scaled relevant to the {job_role} position using {s1} and {s2}?"
+        q1_text = f"Can you walk me through the architecture of a high-impact system you designed or scaled relevant to the {job_role} position using {s1} and {s2}{proj_anchor}?"
         q1_comp = "System Architecture & Breadth"
         q1_ev = "Clearly states requirements, traffic volumes, component boundaries, and technology trade-offs."
         q1_followups = ["What was the single biggest bottleneck in that design?", "How did you monitor data consistency under peak load?"]

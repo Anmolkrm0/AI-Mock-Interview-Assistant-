@@ -33,8 +33,8 @@ class LiveInterviewSessionManager:
             await self.ws.close(code=1008, reason="Interview not found")
             return False
 
-        # Transition state: connecting/ready -> in_progress
-        if self.interview.status in ("ready", "connecting"):
+        # Transition state: connecting/ready/created -> in_progress
+        if self.interview.status in ("ready", "connecting", "created"):
             transition_interview_state(self.interview, "in_progress", self.db)
 
         # Load ordered questions
@@ -45,13 +45,29 @@ class LiveInterviewSessionManager:
             .all()
         )
 
+        if not self.questions:
+            # Fallback question if none found
+            fallback_q = Question(
+                interview_id=self.interview.id,
+                sequence_number=1,
+                question_text=f"Welcome! Can you tell me about your background and recent projects relevant to the {self.interview.job_role} role?",
+                competency="System Architecture & Background",
+                difficulty="Medium",
+                question_type="architectural",
+                status="pending",
+            )
+            self.db.add(fallback_q)
+            self.db.commit()
+            self.questions = [fallback_q]
+
         # Resume at the first unanswered question if candidate reconnected
+        q_ids = [q.id for q in self.questions]
         answered_q_ids = {
             a.question_id
             for a in self.db.query(AnswerAttempt.question_id)
-            .filter(AnswerAttempt.selected_for_evaluation == True)
+            .filter(AnswerAttempt.question_id.in_(q_ids), AnswerAttempt.selected_for_evaluation == True)
             .all()
-        }
+        } if q_ids else set()
         for idx, q in enumerate(self.questions):
             if q.id not in answered_q_ids:
                 self.current_question_index = idx
@@ -95,6 +111,21 @@ class LiveInterviewSessionManager:
 
     async def handle_message(self, data: Dict[str, Any]):
         msg_type = data.get("type")
+
+        if msg_type in ("init_request", "get_state"):
+            curr_q = self.questions[self.current_question_index] if self.questions else None
+            await self.ws.send_json({
+                "type": "question_update",
+                "current_question_index": self.current_question_index,
+                "current_question": {
+                    "id": str(curr_q.id) if curr_q else None,
+                    "sequence": curr_q.sequence_number if curr_q else 1,
+                    "text": curr_q.question_text if curr_q else "Welcome to your mock interview.",
+                    "competency": curr_q.competency if curr_q else "Intro",
+                    "difficulty": curr_q.difficulty if curr_q else "Medium",
+                } if curr_q else None,
+            })
+            return
 
         if msg_type == "text_answer":
             # Candidate submitted typed answer

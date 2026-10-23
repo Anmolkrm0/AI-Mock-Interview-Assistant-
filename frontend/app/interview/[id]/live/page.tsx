@@ -90,31 +90,67 @@ export default function LiveInterviewPage() {
   // Confirm End Modal
   const [showEndModal, setShowEndModal] = useState(false);
 
-  // 1. Initialize Camera & Microphone
+  // 1. Initialize Camera & Microphone with resilient fallbacks
   useEffect(() => {
+    let active = true;
     let localStream: MediaStream | null = null;
+
     async function setupMedia() {
       try {
         localStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
+          video: {
+            facingMode: "user",
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+          },
           audio: true,
         });
-        setStream(localStream);
-        if (videoRef.current) {
-          videoRef.current.srcObject = localStream;
+        if (!active) {
+          localStream.getTracks().forEach((t) => t.stop());
+          return;
         }
+        setStream(localStream);
       } catch (err: any) {
-        console.warn("Camera/Mic access denied or unavailable:", err);
+        console.warn("Combined video+audio access failed, trying separate:", err);
+        try {
+          const videoStream = await navigator.mediaDevices.getUserMedia({ video: true }).catch(() => null);
+          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
+          if (!active) {
+            videoStream?.getTracks().forEach((t) => t.stop());
+            audioStream?.getTracks().forEach((t) => t.stop());
+            return;
+          }
+          if (videoStream || audioStream) {
+            const combined = new MediaStream();
+            videoStream?.getVideoTracks().forEach((t) => combined.addTrack(t));
+            audioStream?.getAudioTracks().forEach((t) => combined.addTrack(t));
+            setStream(combined);
+          }
+        } catch (err2) {
+          console.warn("Individual camera/audio fallback failed:", err2);
+        }
       }
     }
+
     setupMedia();
 
     return () => {
+      active = false;
       if (localStream) {
         localStream.getTracks().forEach((t) => t.stop());
       }
     };
   }, []);
+
+  // Ensure <video> element always attaches stream when available
+  useEffect(() => {
+    if (videoRef.current && stream && !isVideoOff) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch((err) => {
+        console.warn("Camera video play error:", err);
+      });
+    }
+  }, [stream, isVideoOff]);
 
   // 2. Synchronize configuration refs
   useEffect(() => {
@@ -136,22 +172,49 @@ export default function LiveInterviewPage() {
   }, [isTextMode]);
 
   // 3. Audio Speech Synthesis (AI Interviewer Speaks Question)
+  const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const speechKeepAliveRef = useRef<any>(null);
+
+  // Auto-unlock speech synthesis on initial user gesture anywhere on window
+  useEffect(() => {
+    const unlockSpeech = () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+      }
+    };
+    window.addEventListener("click", unlockSpeech);
+    window.addEventListener("touchstart", unlockSpeech);
+    return () => {
+      window.removeEventListener("click", unlockSpeech);
+      window.removeEventListener("touchstart", unlockSpeech);
+    };
+  }, []);
+
   const speakText = (text: string, onEnd?: () => void) => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      console.warn("Speech synthesis not supported in this browser.");
       if (onEnd) onEnd();
       return;
     }
 
     try {
       window.speechSynthesis.cancel();
-      // Temporarily pause recognition while interviewer speaks so computer speaker is not captured
+      if (speechKeepAliveRef.current) {
+        clearInterval(speechKeepAliveRef.current);
+        speechKeepAliveRef.current = null;
+      }
       stopListening();
 
-      // Clean markdown tags and asterisks from speech
-      const cleanText = text.replace(/[*_#`~]/g, " ").replace(/\s+/g, " ").trim();
+      const cleanText = text.replace(/[*_#`~[\]]/g, " ").replace(/\s+/g, " ").trim();
+      if (!cleanText) {
+        if (onEnd) onEnd();
+        return;
+      }
+
       const utterance = new SpeechSynthesisUtterance(cleanText);
-      utterance.rate = 0.95;
+      activeUtteranceRef.current = utterance;
+      utterance.rate = 0.98;
       utterance.pitch = 1.0;
       utterance.lang = "en-US";
 
@@ -174,11 +237,19 @@ export default function LiveInterviewPage() {
       setIsSpeaking(true);
       isSpeakingRef.current = true;
 
-      utterance.onend = () => {
+      const finishSpeech = () => {
+        if (speechKeepAliveRef.current) {
+          clearInterval(speechKeepAliveRef.current);
+          speechKeepAliveRef.current = null;
+        }
         setIsSpeaking(false);
         isSpeakingRef.current = false;
+        activeUtteranceRef.current = null;
+      };
+
+      utterance.onend = () => {
+        finishSpeech();
         if (onEnd) onEnd();
-        // Once interviewer finishes speaking, automatically start listening to candidate
         if (!isMicMutedRef.current && !isTextModeRef.current) {
           startListening();
         }
@@ -186,21 +257,27 @@ export default function LiveInterviewPage() {
 
       utterance.onerror = (e) => {
         console.warn("Speech synthesis error:", e);
-        setIsSpeaking(false);
-        isSpeakingRef.current = false;
+        finishSpeech();
         if (onEnd) onEnd();
         if (!isMicMutedRef.current && !isTextModeRef.current) {
           startListening();
         }
       };
 
-      // Ensure speech synthesis audio context is active
+      // Workaround for Chrome bug where long utterances freeze
+      speechKeepAliveRef.current = setInterval(() => {
+        if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+          window.speechSynthesis.pause();
+          window.speechSynthesis.resume();
+        }
+      }, 9000);
+
       if (window.speechSynthesis.paused) {
         window.speechSynthesis.resume();
       }
       window.speechSynthesis.speak(utterance);
     } catch (err) {
-      console.warn("Speech synthesis execution error:", err);
+      console.warn("Speech synthesis failed:", err);
       setIsSpeaking(false);
       isSpeakingRef.current = false;
       if (onEnd) onEnd();
@@ -211,40 +288,8 @@ export default function LiveInterviewPage() {
   };
 
   // 4. Real-time Speech-to-Text Recognition (Transcribes Candidate's Voice Live)
-  const startListening = () => {
-    if (!recognitionRef.current || isSpeakingRef.current || isMicMutedRef.current || isTextModeRef.current) {
-      return;
-    }
-    try {
-      isListeningRef.current = true;
-      recognitionRef.current.start();
-      setIsListening(true);
-    } catch (e) {
-      // Recognition may already be running
-    }
-  };
-
-  const stopListening = () => {
-    isListeningRef.current = false;
-    setIsListening(false);
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (e) {}
-    }
-  };
-
-  // 5. Initialize Speech Recognition & Voices
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.getVoices();
-      window.speechSynthesis.onvoiceschanged = () => {
-        window.speechSynthesis.getVoices();
-      };
-    }
-
+  const initSpeechRecognition = () => {
+    if (typeof window === "undefined" || recognitionRef.current) return;
     const SpeechRecognitionClass =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -291,19 +336,62 @@ export default function LiveInterviewPage() {
 
       recognition.onend = () => {
         setIsListening(false);
-        // Automatically keep listening if active, unmuted, and interviewer is not talking
         if (isListeningRef.current && !isMicMutedRef.current && !isSpeakingRef.current && !isTextModeRef.current) {
           try {
             recognition.start();
+            setIsListening(true);
           } catch (e) {}
         }
       };
 
       recognitionRef.current = recognition;
+      setSpeechSupported(true);
     } catch (err) {
       console.warn("Failed to init SpeechRecognition:", err);
       setSpeechSupported(false);
     }
+  };
+
+  const startListening = () => {
+    if (isSpeakingRef.current || isMicMutedRef.current || isTextModeRef.current) {
+      return;
+    }
+    if (!recognitionRef.current) {
+      initSpeechRecognition();
+    }
+    if (recognitionRef.current) {
+      try {
+        isListeningRef.current = true;
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (e) {
+        setIsListening(true);
+      }
+    }
+  };
+
+  const stopListening = () => {
+    isListeningRef.current = false;
+    setIsListening(false);
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+    }
+  };
+
+  // 5. Initialize Speech Recognition & Voices on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+    }
+
+    initSpeechRecognition();
 
     return () => {
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -317,9 +405,11 @@ export default function LiveInterviewPage() {
     };
   }, []);
 
-  // 6. Initialize WebSocket Connection
+  // 6. Initialize WebSocket Connection with cancellation guard
   useEffect(() => {
+    let isCancelled = false;
     let ws: WebSocket | null = null;
+    let pingTimer: any = null;
 
     async function connectWebSocket() {
       let token = "";
@@ -330,6 +420,8 @@ export default function LiveInterviewPage() {
         console.warn("Could not retrieve auth token:", err);
       }
 
+      if (isCancelled) return;
+
       const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const host = process.env.NEXT_PUBLIC_WS_URL || `${wsProtocol}//${window.location.hostname}:8000/api/v1`;
       const url = `${host}/interviews/${interviewId}/live-ws?token=${encodeURIComponent(token)}`;
@@ -338,11 +430,23 @@ export default function LiveInterviewPage() {
       wsRef.current = ws;
 
       ws.onopen = () => {
+        if (isCancelled) {
+          ws?.close();
+          return;
+        }
         setConnectionStatus("connected");
         setErrorMsg(null);
+
+        // Ping after 2.5s if currentQuestion not received
+        pingTimer = setTimeout(() => {
+          if (!isCancelled && ws && ws.readyState === WebSocket.OPEN && !currentQuestion) {
+            ws.send(JSON.stringify({ type: "init_request" }));
+          }
+        }, 2500);
       };
 
       ws.onmessage = (event) => {
+        if (isCancelled) return;
         try {
           const payload = JSON.parse(event.data);
 
@@ -416,14 +520,18 @@ export default function LiveInterviewPage() {
       };
 
       ws.onerror = (e) => {
-        console.error("WebSocket error:", e);
-        setErrorMsg("WebSocket connection error. Retrying...");
+        if (!isCancelled) {
+          console.error("WebSocket error:", e);
+          setErrorMsg("Connecting to interviewer... Click Reconnect below if taking longer than 5 seconds.");
+        }
       };
 
       ws.onclose = (e) => {
-        setConnectionStatus("disconnected");
-        if (e.reason) {
-          setErrorMsg(e.reason);
+        if (!isCancelled) {
+          setConnectionStatus("disconnected");
+          if (e.reason) {
+            setErrorMsg(e.reason);
+          }
         }
       };
     }
@@ -431,12 +539,17 @@ export default function LiveInterviewPage() {
     connectWebSocket();
 
     return () => {
+      isCancelled = true;
+      if (pingTimer) clearTimeout(pingTimer);
       stopListening();
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
       if (ws) {
         ws.close();
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
       }
     };
   }, [interviewId, router]);
@@ -472,10 +585,34 @@ export default function LiveInterviewPage() {
     }
   };
 
-  const toggleVideo = () => {
-    if (stream) {
-      stream.getVideoTracks().forEach((track) => {
-        track.enabled = !track.enabled;
+  const toggleVideo = async () => {
+    if (!stream) {
+      try {
+        const newStream = await navigator.mediaDevices
+          .getUserMedia({
+            video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: true,
+          })
+          .catch(() => navigator.mediaDevices.getUserMedia({ video: true }));
+        setStream(newStream);
+        setIsVideoOff(false);
+      } catch (e) {
+        console.warn("Could not enable camera:", e);
+      }
+      return;
+    }
+    const tracks = stream.getVideoTracks();
+    if (tracks.length === 0) {
+      try {
+        const vStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        vStream.getVideoTracks().forEach((t) => stream.addTrack(t));
+        setIsVideoOff(false);
+      } catch (e) {
+        console.warn("Could not add video track:", e);
+      }
+    } else {
+      tracks.forEach((track) => {
+        track.enabled = isVideoOff;
       });
       setIsVideoOff(!isVideoOff);
     }
@@ -697,13 +834,37 @@ export default function LiveInterviewPage() {
                 {currentQuestion?.text ? (
                   currentQuestion.text
                 ) : errorMsg ? (
-                  <span className="text-rose-300 font-normal text-xs sm:text-sm">
-                    Unable to connect to the live interview session. Please click Retry above to reconnect.
-                  </span>
+                  <div className="flex flex-col gap-2">
+                    <span className="text-rose-300 font-normal text-xs sm:text-sm">
+                      {errorMsg}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => window.location.reload()}
+                      className="self-start px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-xs font-semibold"
+                    >
+                      Reconnect Now
+                    </button>
+                  </div>
                 ) : (
-                  <div className="flex items-center gap-2.5 text-slate-300 text-sm">
-                    <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
-                    <span>Connecting to interviewer...</span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5 text-slate-300 text-sm">
+                      <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+                      <span>Connecting to interviewer...</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                          wsRef.current.send(JSON.stringify({ type: "init_request" }));
+                        } else {
+                          window.location.reload();
+                        }
+                      }}
+                      className="px-2.5 py-1 text-xs rounded-md bg-blue-600/30 text-blue-300 hover:bg-blue-600/50 transition border border-blue-500/30 font-medium"
+                    >
+                      Reload Session
+                    </button>
                   </div>
                 )}
               </div>
@@ -794,11 +955,11 @@ export default function LiveInterviewPage() {
 
             {/* Spoken Answer Live Transcription Panel */}
             <div className="p-3 sm:p-3.5 rounded-xl bg-slate-800/90 border border-slate-700 shadow-sm shrink-0">
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                 <div className="flex items-center gap-1.5">
                   <span
-                    className={`w-2 h-2 rounded-full ${
-                      isListening && !isSpeaking ? "bg-emerald-500 animate-pulse" : "bg-slate-500"
+                    className={`w-2.5 h-2.5 rounded-full ${
+                      isListening && !isSpeaking ? "bg-emerald-400 animate-ping" : "bg-slate-500"
                     }`}
                   />
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1">
@@ -806,19 +967,39 @@ export default function LiveInterviewPage() {
                     Your Spoken Answer (Live Transcribing)
                   </h3>
                 </div>
+
                 <div className="flex items-center gap-2">
-                  {isListening && !isSpeaking && (
-                    <span className="text-[10px] sm:text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-full flex items-center gap-1">
-                      <Radio className="w-2.5 h-2.5 animate-spin text-emerald-400" />
-                      Listening...
-                    </span>
+                  {/* Explicit Click to Speak / Record Toggle Button */}
+                  {isListening ? (
+                    <button
+                      type="button"
+                      onClick={stopListening}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-600/30 hover:bg-rose-600/40 text-rose-200 border border-rose-500/50 text-xs font-bold transition-all shadow-sm shadow-rose-900/40"
+                      title="Click to pause voice recording"
+                    >
+                      <Radio className="w-3.5 h-3.5 text-rose-400 animate-spin" />
+                      <span>Recording Active • Click to Pause</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={startListening}
+                      disabled={isMicMuted || isSpeaking}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold transition-all shadow-sm shadow-emerald-900/30"
+                      title="Click to start transcribing your answer"
+                    >
+                      <Mic className="w-3.5 h-3.5" />
+                      <span>Click to Speak / Record</span>
+                    </button>
                   )}
+
                   {isSpeaking && (
                     <span className="text-[10px] sm:text-[11px] font-semibold text-blue-300 bg-blue-950/60 border border-blue-800/60 px-2 py-0.5 rounded-full flex items-center gap-1">
                       <Volume2 className="w-2.5 h-2.5 animate-bounce" />
                       Interviewer Speaking...
                     </span>
                   )}
+
                   {(spokenTranscript || interimTranscript) && (
                     <button
                       type="button"
@@ -828,11 +1009,30 @@ export default function LiveInterviewPage() {
                       }}
                       className="text-[10px] sm:text-[11px] text-slate-400 hover:text-slate-200 underline transition-colors"
                     >
-                      Clear &amp; Re-speak
+                      Clear
                     </button>
                   )}
                 </div>
               </div>
+
+              {/* Live Audio Waves when Listening */}
+              {isListening && !isSpeaking && (
+                <div className="flex items-center justify-between px-2.5 py-1 bg-emerald-950/40 rounded-lg border border-emerald-800/40 mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-[11px] font-semibold text-emerald-300">
+                      Microphone Active: Speak now to transcribe in real-time
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 text-emerald-400">
+                    <span className="w-1 h-2 bg-emerald-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                    <span className="w-1 h-4 bg-emerald-300 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                    <span className="w-1 h-3 bg-emerald-400 rounded-full animate-bounce [animation-delay:-0.45s]" />
+                    <span className="w-1 h-5 bg-emerald-300 rounded-full animate-bounce [animation-delay:-0.2s]" />
+                    <span className="w-1 h-2 bg-emerald-400 rounded-full animate-bounce [animation-delay:-0.35s]" />
+                  </div>
+                </div>
+              )}
 
               <div className="relative">
                 <textarea
@@ -846,10 +1046,12 @@ export default function LiveInterviewPage() {
                   }}
                   placeholder={
                     isSpeaking
-                      ? "Interviewer is speaking the question aloud..."
+                      ? "Interviewer is speaking the question aloud... Voice will unlock when question completes."
                       : isMicMuted
                       ? "Microphone is muted. Click Unmute below to answer."
-                      : "Speak your answer clearly into your microphone... As you talk, your words will transcribe here in text form."
+                      : isListening
+                      ? "Listening to your voice... Speak clearly and your words will appear here immediately."
+                      : "Click 'Click to Speak / Record' above to start voice transcription, or type your answer here directly."
                   }
                   className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 placeholder:text-slate-500 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none font-sans leading-relaxed"
                 />
